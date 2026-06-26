@@ -142,14 +142,15 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
 
   // Thêm đơn mới: Firestore (addDoc) hoặc state cục bộ.
   const saveOrderRow = async (row) => {
+    const enriched = { ...row, ownerName: accountName };
     if (firebaseEnabled && uid) {
       try {
-        const saved = await addRecord('orders', uid, row);
+        const saved = await addRecord('orders', uid, enriched, profile?.parentId || null);
         setOrders(p => [saved, ...p]);
         return;
       } catch (e) { console.error('Firestore save order failed:', e); }
     }
-    setOrders(p => [{ ...row, id: row.id ?? Date.now() }, ...p]);
+    setOrders(p => [{ ...enriched, id: row.id ?? Date.now() }, ...p]);
   };
 
   // Modal

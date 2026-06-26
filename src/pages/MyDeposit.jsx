@@ -61,8 +61,10 @@ const MyDeposit = () => {
   const [filterStartDate, setFilterStartDate] = useState('2026-06-01');
   const [filterEndDate, setFilterEndDate] = useState('2026-06-30');
   const [activeFilters, setActiveFilters] = useState({ orderId: '', cardNum: '' });
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const uid = user?.uid;
+  const rawOwner = profile?.displayName || getAccountName();
+  const ownerName = rawOwner.includes('@') ? rawOwner.split('@')[0] : rawOwner;
   const [deposits, setDeposits] = useState([]);
   const [depositsLoaded, setDepositsLoaded] = useState(false);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
@@ -245,11 +247,11 @@ const MyDeposit = () => {
           date: now,
           quantity: prodList.length, status: 'Success',
           history: `top-up success by ${company || 'company'} ${now}`,
-          productType: 'Top-Up SIM', company, note, items
+          productType: 'Top-Up SIM', company, note, items, ownerName
         };
         if (firebaseEnabled && uid) {
           try {
-            const saved = await addRecord('topups', uid, newDep);
+            const saved = await addRecord('topups', uid, newDep, profile?.parentId || null);
             setDeposits(prev => [saved, ...prev]);
           } catch (e) { console.error('Firestore save topup failed:', e); setDeposits(prev => [{ ...newDep, id: Date.now() }, ...prev]); }
         } else {
