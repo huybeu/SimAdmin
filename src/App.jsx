@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
+import ManageAgents from './pages/ManageAgents';
 import DailyNotice from './pages/DailyNotice';
 import ImportantNotice from './pages/ImportantNotice';
 import EsimApn from './pages/EsimApn';
@@ -19,9 +20,10 @@ import GeneralPlaceholder from './pages/GeneralPlaceholder';
 import ApiConsole from './components/ApiConsole';
 import LoginScreen from './components/LoginScreen';
 import { useAuth } from './auth/AuthContext';
+import { isPageAllowed, defaultPageForRole } from './lib/roles';
 
 function App() {
-  const { user, loading, firebaseEnabled } = useAuth();
+  const { user, profile, role, loading, logout, firebaseEnabled } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('daily-notice');
 
@@ -29,12 +31,27 @@ function App() {
     setIsSidebarCollapsed(!isSidebarCollapsed);
   };
 
+  // Chuyển về trang mặc định theo role nếu trang hiện tại không được phép
+  useEffect(() => {
+    if (!firebaseEnabled || !role) return;
+    if (!isPageAllowed(role, activePage)) setActivePage(defaultPageForRole(role));
+  }, [role, activePage, firebaseEnabled]);
+
   // Gate đăng nhập (chỉ khi đã cấu hình Firebase)
   if (firebaseEnabled && loading) {
     return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted, #8a97a8)' }}>Đang tải…</div>;
   }
   if (firebaseEnabled && !user) {
     return <LoginScreen />;
+  }
+  // Tài khoản bị khoá
+  if (firebaseEnabled && profile && profile.active === false) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main, #e6edf3)', background: 'var(--bg-main, #0f141a)' }}>
+        <div>Tài khoản của bạn đã bị khoá. Liên hệ quản trị viên.</div>
+        <button onClick={() => logout()} className="btn btn-teal" style={{ padding: '8px 20px' }}>Đăng xuất</button>
+      </div>
+    );
   }
 
   const renderActivePage = () => {
@@ -57,6 +74,8 @@ function App() {
         return <MyShip autoOpenAdd />;
       case 'my-topup':
         return <MyDeposit />;
+      case 'manage-agents':
+        return <ManageAgents />;
       case 'order-matching':
         return <OrderMatching />;
       case 'mail-customized':
@@ -84,10 +103,11 @@ function App() {
 
       {/* Main Content Area: Sidebar + Scrollable View Wrapper */}
       <div className="main-content">
-        <Sidebar 
-          isCollapsed={isSidebarCollapsed} 
-          activePage={activePage} 
-          setActivePage={setActivePage} 
+        <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          activePage={activePage}
+          setActivePage={setActivePage}
+          role={role}
         />
         
         {/* Scrollable page body */}
