@@ -59,7 +59,8 @@ export default function ManageAgents() {
     setCreating(true);
     try {
       const uid = await createAuthUser(form.email.trim(), form.password);
-      const parentId = role === 'admin' && form.role === 'tong_kho' ? user.uid : user.uid;
+      // parentId = uid của người tạo → tong_kho tìm đại lý con qua where('parentId','==',uid)
+      const parentId = user.uid;
       await setDoc(doc(db, 'users', uid), {
         uid,
         email: form.email.trim(),
@@ -174,7 +175,16 @@ export default function ManageAgents() {
                   <tr key={u.uid} style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <td className="notice-cell" style={{ padding: '10px 14px' }}>{u.email}</td>
                     <td className="notice-cell" style={{ padding: '10px 14px' }}>{u.displayName}</td>
-                    <td className="notice-cell" style={{ padding: '10px 14px' }}>{ROLE_LABEL[u.role] || u.role}</td>
+                    <td className="notice-cell" style={{ padding: '10px 14px' }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '700',
+                        background: u.role === 'admin' ? 'rgba(88,217,200,0.12)' : u.role === 'tong_kho' ? 'rgba(76,175,80,0.12)' : 'rgba(230,126,34,0.12)',
+                        color:      u.role === 'admin' ? '#58d9c8'             : u.role === 'tong_kho' ? '#4caf50'            : '#e67e22',
+                        border: `1px solid ${u.role === 'admin' ? 'rgba(88,217,200,0.3)' : u.role === 'tong_kho' ? 'rgba(76,175,80,0.3)' : 'rgba(230,126,34,0.3)'}`,
+                      }}>
+                        {ROLE_LABEL[u.role] || u.role}
+                      </span>
+                    </td>
                     <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'center' }}>
                       <input type="number" min="0" defaultValue={u.markupVnd || 0} onBlur={e => changeMarkup(u, e.target.value)}
                         style={{ ...inp, width: '90px', textAlign: 'center' }} />

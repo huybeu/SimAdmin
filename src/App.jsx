@@ -23,7 +23,7 @@ import { useAuth } from './auth/AuthContext';
 import { isPageAllowed, defaultPageForRole } from './lib/roles';
 
 function App() {
-  const { user, profile, role, loading, logout, firebaseEnabled } = useAuth();
+  const { user, profile, role, loading, logout, firebaseEnabled, profileError, retryProfile } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('daily-notice');
 
@@ -44,6 +44,17 @@ function App() {
   if (firebaseEnabled && !user) {
     return <LoginScreen />;
   }
+  // Hồ sơ lỗi (Firestore Rules chưa publish) → banner + nút thử lại
+  const profileErrorBanner = firebaseEnabled && user && profileError ? (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#7d1f1f', color: '#ffd0d0', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '13px', gap: '12px' }}>
+      <span>⚠ Không tải được hồ sơ: <em>{profileError}</em> — Hãy publish Firestore Rules rồi nhấn thử lại.</span>
+      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+        <button onClick={retryProfile} className="btn btn-teal" style={{ padding: '4px 14px', fontSize: '12px' }}>Thử lại</button>
+        <button onClick={() => logout()} className="btn btn-red" style={{ padding: '4px 14px', fontSize: '12px' }}>Đăng xuất</button>
+      </div>
+    </div>
+  ) : null;
+
   // Tài khoản bị khoá
   if (firebaseEnabled && profile && profile.active === false) {
     return (
@@ -94,7 +105,8 @@ function App() {
   };
 
   return (
-    <div className="app-container" style={{ paddingBottom: '40px' }}>
+    <div className="app-container" style={{ paddingBottom: '40px', paddingTop: profileErrorBanner ? '44px' : undefined }}>
+      {profileErrorBanner}
       {/* Top Navigation Bar */}
       <Topbar 
         isSidebarCollapsed={isSidebarCollapsed} 

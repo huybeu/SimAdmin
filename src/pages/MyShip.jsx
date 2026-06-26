@@ -223,6 +223,9 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const rawName = profile?.displayName || getAccountNameFallback();
   const accountName = rawName.includes('@') ? rawName.split('@')[0] : rawName;
 
+  // Auto-fill company khi profile load xong
+  useEffect(() => { if (accountName && !company) setCompany(accountName); }, [accountName]);
+
   // ── list ────────────────────────────────────────────────────────────────
   const handleSearch = (e) => {
     e.preventDefault();

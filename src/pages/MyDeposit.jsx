@@ -135,7 +135,8 @@ const MyDeposit = () => {
   const [selectedDeposit, setSelectedDeposit] = useState(null);
   const [detailTab, setDetailTab] = useState('info'); // 'info' | 'history'
 
-  const accountName = getAccountName();
+  // Auto-fill company khi profile load xong
+  useEffect(() => { if (ownerName && !company) setCompany(ownerName); }, [ownerName]);
 
   // Verify
   const [verifyTarget, setVerifyTarget] = useState(null); // { rowIdx, simIdx }
@@ -542,7 +543,7 @@ const MyDeposit = () => {
                       <select value={company} onChange={e => setCompany(e.target.value)}
                         style={{ width: '100%', padding: '7px 10px', border: `1px solid ${company ? '#ccc' : '#e74c3c'}`, borderRadius: '4px', fontSize: '12px', background: 'white', marginBottom: '12px', color: company ? '#333' : '#999' }}>
                         <option value="">-- Chọn công ty (bắt buộc) --</option>
-                        <option value={accountName}>{accountName}</option>
+                        <option value={ownerName}>{ownerName}</option>
                       </select>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                         <label style={{ fontSize: '12px', color: '#555', paddingTop: '7px', flexShrink: 0, width: '50px' }}>Note</label>

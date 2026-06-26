@@ -11,7 +11,6 @@ import { ADMIN_EMAILS } from '../lib/roles';
 
 const AuthContext = createContext(null);
 
-// Nạp hồ sơ users/{uid}; tạo mới nếu chưa có (role theo ADMIN_EMAILS).
 async function loadOrCreateProfile(u) {
   const ref = doc(db, 'users', u.uid);
   const snap = await getDoc(ref);
@@ -31,25 +30,54 @@ async function loadOrCreateProfile(u) {
   return profile;
 }
 
+// Thử tối đa maxAttempts lần, delay 1s giữa mỗi lần.
+async function loadWithRetry(u, maxAttempts = 3) {
+  let lastErr;
+  for (let i = 0; i < maxAttempts; i++) {
+    try { return await loadOrCreateProfile(u); }
+    catch (e) {
+      lastErr = e;
+      if (i < maxAttempts - 1) await new Promise(r => setTimeout(r, 1200));
+    }
+  }
+  throw lastErr;
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(firebaseEnabled);
+  const [user, setUser]               = useState(null);
+  const [profile, setProfile]         = useState(null);
+  const [profileError, setProfileError] = useState(null);
+  const [loading, setLoading]         = useState(firebaseEnabled);
+
+  const doLoadProfile = useCallback(async (u) => {
+    if (!u) { setProfile(null); setProfileError(null); return; }
+    setProfileError(null);
+    try {
+      setProfile(await loadWithRetry(u));
+    } catch (e) {
+      console.error('Load profile failed after retries:', e);
+      setProfile(null);
+      setProfileError(e.message || 'Không thể tải hồ sơ. Kiểm tra Firestore Rules.');
+    }
+  }, []);
 
   useEffect(() => {
     if (!firebaseEnabled) { setLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      if (u) {
-        try { setProfile(await loadOrCreateProfile(u)); }
-        catch (e) { console.error('Load profile failed:', e); setProfile(null); }
-      } else {
-        setProfile(null);
-      }
+      await doLoadProfile(u);
       setLoading(false);
     });
     return unsub;
-  }, []);
+  }, [doLoadProfile]);
+
+  // Gọi lại thủ công (nút "Tải lại") khi Rules đã được publish
+  const retryProfile = useCallback(async () => {
+    if (!auth.currentUser) return;
+    setLoading(true);
+    await doLoadProfile(auth.currentUser);
+    setLoading(false);
+  }, [doLoadProfile]);
 
   const refreshProfile = useCallback(async () => {
     if (!firebaseEnabled || !auth.currentUser) return;
@@ -66,7 +94,11 @@ export function AuthProvider({ children }) {
   const role = profile?.role || null;
 
   return (
-    <AuthContext.Provider value={{ user, profile, role, loading, login, signup, logout, refreshProfile, firebaseEnabled }}>
+    <AuthContext.Provider value={{
+      user, profile, role, loading,
+      profileError, retryProfile,
+      login, signup, logout, refreshProfile, firebaseEnabled,
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -37,7 +37,7 @@ export async function fetchRecords(name, uid) {
  *  - dai_ly  → bản ghi của mình
  */
 export async function fetchRecordsForRole(name, { uid, role }) {
-  if (!firebaseEnabled || !uid) return lsLoad(name);
+  if (!firebaseEnabled || !uid || !role) return lsLoad(name);
 
   const col = collection(db, name);
 
