@@ -42,17 +42,26 @@ export async function fetchRecordsForRole(name, { uid, role }) {
   const col = collection(db, name);
 
   if (role === 'admin') {
-    const snap = await getDocs(col);
-    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    return rows;
+    try {
+      const snap = await getDocs(col);
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      rows.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return rows;
+    } catch {
+      // Rules chưa cho phép admin đọc toàn bộ — fallback về đơn của mình.
+      return fetchRecords(name, uid);
+    }
   }
 
   if (role === 'tong_kho') {
-    const [snapOwn, snapChildren] = await Promise.all([
-      getDocs(query(col, where('uid', '==', uid))),
-      getDocs(query(col, where('parentId', '==', uid))),
-    ]);
+    // Query 1: đơn của mình. Query 2: đơn của đại lý con (cần Firestore Rules có parentId).
+    const snapOwn = await getDocs(query(col, where('uid', '==', uid)));
+    let snapChildren = { docs: [] };
+    try {
+      snapChildren = await getDocs(query(col, where('parentId', '==', uid)));
+    } catch {
+      // Rules chưa cho phép parentId query — chỉ hiện đơn của mình tạm thời.
+    }
     const map = new Map();
     [...snapOwn.docs, ...snapChildren.docs].forEach(d =>
       map.set(d.id, { id: d.id, ...d.data() })
