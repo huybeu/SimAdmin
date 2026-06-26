@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, Trash2, Plus, X, Heart, CheckCircle, AlertCircle, Upload, Zap, RefreshCw } from 'lucide-react';
 import { topupSim, remoteActivation, trafficReset, verifySimCard, searchMyQuotations, getApiConfig } from '../utils/api';
 import PlanSelectorPanel from '../components/PlanSelectorPanel';
+import { useAuth } from '../auth/AuthContext';
+import { fetchRecords, addRecord, lsSaveAll } from '../utils/dataStore';
+import { firebaseEnabled } from '../firebase';
 
 // Tên tài khoản hiển thị duy nhất ở ô Company (theo môi trường đang kết nối)
 function getAccountName() {
@@ -21,9 +24,6 @@ function mapTopupPlans(prodList) {
   });
   return prodList.filter(p => p.productType === 2).map(mk);
 }
-
-// localStorage key for persisting placed top-up orders
-const DEPOSITS_KEY = 'simadmin_my_topups';
 
 // Mock history data matching real system
 const MOCK_DEPOSITS = [
@@ -61,19 +61,30 @@ const MyDeposit = () => {
   const [filterStartDate, setFilterStartDate] = useState('2026-06-01');
   const [filterEndDate, setFilterEndDate] = useState('2026-06-30');
   const [activeFilters, setActiveFilters] = useState({ orderId: '', cardNum: '' });
-  const [deposits, setDeposits] = useState(() => {
-    try {
-      const saved = localStorage.getItem(DEPOSITS_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    return MOCK_DEPOSITS;
-  });
+  const { user } = useAuth();
+  const uid = user?.uid;
+  const [deposits, setDeposits] = useState([]);
+  const [depositsLoaded, setDepositsLoaded] = useState(false);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
 
-  // Persist top-up orders to localStorage (SimAdmin has no backend).
+  // Load top-up: Firestore (đã đăng nhập) hoặc localStorage; rỗng → mock seed.
   useEffect(() => {
-    try { localStorage.setItem(DEPOSITS_KEY, JSON.stringify(deposits)); } catch { /* ignore */ }
-  }, [deposits]);
+    let cancelled = false;
+    (async () => {
+      const rows = await fetchRecords('topups', uid);
+      if (cancelled) return;
+      setDeposits(rows ?? MOCK_DEPOSITS);
+      setDepositsLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  // Chỉ ghi localStorage khi KHÔNG dùng Firestore.
+  useEffect(() => {
+    if (firebaseEnabled && uid) return;
+    if (!depositsLoaded) return;
+    lsSaveAll('topups', deposits);
+  }, [deposits, depositsLoaded, uid]);
 
   // --- Modal ---
   const [showModal, setShowModal] = useState(false);
@@ -230,13 +241,20 @@ const MyDeposit = () => {
           }))
         );
         const newDep = {
-          id: Date.now(), orderId: res.orderId,
+          orderId: res.orderId,
           date: now,
           quantity: prodList.length, status: 'Success',
           history: `top-up success by ${company || 'company'} ${now}`,
           productType: 'Top-Up SIM', company, note, items
         };
-        setDeposits(prev => [newDep, ...prev]);
+        if (firebaseEnabled && uid) {
+          try {
+            const saved = await addRecord('topups', uid, newDep);
+            setDeposits(prev => [saved, ...prev]);
+          } catch (e) { console.error('Firestore save topup failed:', e); setDeposits(prev => [{ ...newDep, id: Date.now() }, ...prev]); }
+        } else {
+          setDeposits(prev => [{ ...newDep, id: Date.now() }, ...prev]);
+        }
         setShowModal(false); resetModal();
         alert(`Top-Up submitted!\nOrder ID: ${res.orderId}\nTotal: ${prodList.length} SIMs`);
       } else {

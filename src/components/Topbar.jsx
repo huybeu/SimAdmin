@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, Globe, User, ChevronDown, LogOut, Settings } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
 
 const Topbar = ({ isSidebarCollapsed, toggleSidebar }) => {
+  const { user, logout, firebaseEnabled } = useAuth();
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState({ hours: 5, minutes: 56, seconds: 15 });
@@ -69,17 +71,20 @@ const Topbar = ({ isSidebarCollapsed, toggleSidebar }) => {
         {/* Profile Dropdown */}
         <div className="topbar-item" onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}>
           <User size={14} />
-          <span>SimDuLich.VN</span>
+          <span>{user?.email || 'SimDuLich.VN'}</span>
           <ChevronDown size={12} />
           <div className={`dropdown-menu ${isUserDropdownOpen ? 'show' : ''}`}>
             <div className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Settings size={14} />
               <span>Cấu hình</span>
             </div>
-            <div className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <LogOut size={14} />
-              <span>Đăng xuất</span>
-            </div>
+            {firebaseEnabled && (
+              <div className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                onClick={() => logout()}>
+                <LogOut size={14} />
+                <span>Đăng xuất</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { createEsimOrder, createSimOrder, topupSim, searchMyQuotations, getApiConfig } from '../utils/api';
+import { useAuth } from '../auth/AuthContext';
+import { fetchRecords, addRecord, lsSaveAll } from '../utils/dataStore';
+import { firebaseEnabled } from '../firebase';
 
 // Tên tài khoản hiển thị duy nhất ở ô Company (theo môi trường đang kết nối)
 function getAccountName() {
   return getApiConfig().environment === 'prod' ? 'SimDuLich.VN' : 'SDL';
 }
 import PlanSelectorPanel from '../components/PlanSelectorPanel';
-
-// localStorage key for persisting placed orders
-const ORDERS_KEY = 'simadmin_my_orders';
 
 // ── Mock data (matching real system) ─────────────────────────────────────
 const MOCK_ORDERS = [
@@ -115,19 +115,42 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const [filterStartDate,  setFilterStartDate]  = useState('2026-06-01');
   const [filterEndDate,    setFilterEndDate]    = useState('2026-06-30');
   const [activeFilters,    setActiveFilters]    = useState({ orderId: '', ecomOrder: '', type: '', history: '' });
-  const [orders,           setOrders]           = useState(() => {
-    try {
-      const saved = localStorage.getItem(ORDERS_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    return MOCK_ORDERS;
-  });
+  const { user } = useAuth();
+  const uid = user?.uid;
+  const [orders,           setOrders]           = useState([]);
+  const [ordersLoaded,     setOrdersLoaded]     = useState(false);
   const [perPage,          setPerPage]          = useState(10);
 
-  // Persist orders to localStorage (SimAdmin has no backend → browser storage).
+  // Load đơn: Firestore (đã đăng nhập) hoặc localStorage; rỗng → mock seed.
   useEffect(() => {
-    try { localStorage.setItem(ORDERS_KEY, JSON.stringify(orders)); } catch { /* ignore */ }
-  }, [orders]);
+    let cancelled = false;
+    (async () => {
+      const rows = await fetchRecords('orders', uid);
+      if (cancelled) return;
+      setOrders(rows ?? MOCK_ORDERS);
+      setOrdersLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [uid]);
+
+  // Chỉ ghi localStorage khi KHÔNG dùng Firestore (Firestore tự lưu khi tạo đơn).
+  useEffect(() => {
+    if (firebaseEnabled && uid) return;
+    if (!ordersLoaded) return;
+    lsSaveAll('orders', orders);
+  }, [orders, ordersLoaded, uid]);
+
+  // Thêm đơn mới: Firestore (addDoc) hoặc state cục bộ.
+  const saveOrderRow = async (row) => {
+    if (firebaseEnabled && uid) {
+      try {
+        const saved = await addRecord('orders', uid, row);
+        setOrders(p => [saved, ...p]);
+        return;
+      } catch (e) { console.error('Firestore save order failed:', e); }
+    }
+    setOrders(p => [{ ...row, id: row.id ?? Date.now() }, ...p]);
+  };
 
   // Modal
   const [showModal, setShowModal] = useState(false);
@@ -264,14 +287,14 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
         const prodList = topupCart.map(l => ({ wmproductId: l.plan.wmproductId, day: l.day, simNum: l.sn.trim() }));
         const res = await topupSim(prodList);
         if (res.code === 0 && res.orderId) {
-          setOrders(p => [{
-            id: Date.now(), orderId: res.orderId, ecomOrder: topupNote || topupCompany || topupCart[0].sn.trim(),
+          await saveOrderRow({
+            orderId: res.orderId, ecomOrder: topupNote || topupCompany || topupCart[0].sn.trim(),
             date: new Date().toLocaleString('sv').replace('T',' ').substr(0,19),
             quantity: topupCart.length, type: 'SIM Top-up', status: 'Success',
             history: 'Top-up success ' + new Date().toLocaleString('sv').substr(0,19),
             company: topupCompany, note: topupNote,
             items: topupCart.map(l => ({ productName: l.plan.productName, price: l.plan.price, day: l.day, sn: l.sn.trim(), amount: l.plan.price * l.day }))
-          }, ...p]);
+          });
           setShowModal(false); resetModal();
           alert(`Top-Up submitted!\nOrder ID: ${res.orderId}\nTotal: ${prodList.length} SIMs`);
         } else alert('Top-Up failed: ' + (res.msg || 'Unknown error'));
@@ -291,14 +314,14 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
         const prodList = cart.map(c => ({ wmproductId: c.plan.wmproductId, qty: c.qty }));
         const res = await createEsimOrder(email, prodList, false);
         if (res.code === 0 && res.orderId) {
-          setOrders(p => [{
-            id: Date.now(), orderId: res.orderId, ecomOrder: ecomOrder || email,
+          await saveOrderRow({
+            orderId: res.orderId, ecomOrder: ecomOrder || email,
             date: new Date().toLocaleString('sv').replace('T',' ').substr(0,19),
             quantity: totalQty, type: 'eSIM', status: 'Success',
             history: 'Shipped ' + new Date().toLocaleString('sv').substr(0,19),
             company, email,
             items: cart.map(c => ({ productName: c.plan.productName, price: c.plan.price, qty: c.qty, amount: c.plan.price * c.qty }))
-          }, ...p]);
+          });
           setShowModal(false); resetModal();
           alert(`eSIM order created!\nOrder ID: ${res.orderId}`);
         } else alert('Failed: ' + (res.msg || 'Unknown error'));
@@ -311,14 +334,14 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
         const prodList = cart.map(c => ({ productId: c.plan.productId, productName: c.plan.productName, qty: c.qty }));
         const res = await createSimOrder(Number(invoiceType), taxId, receivingName, receivingTel, receivingAdd, note, prodList);
         if (res.code === 0 && res.orderId) {
-          setOrders(p => [{
-            id: Date.now(), orderId: res.orderId, ecomOrder: ecomOrder || receivingName,
+          await saveOrderRow({
+            orderId: res.orderId, ecomOrder: ecomOrder || receivingName,
             date: new Date().toLocaleString('sv').replace('T',' ').substr(0,19),
             quantity: totalQty, type: 'SIM', status: 'Success',
             history: 'Shipped ' + new Date().toLocaleString('sv').substr(0,19),
             company, receivingName, receivingTel, receivingAdd, note,
             items: cart.map(c => ({ productName: c.plan.productName, price: c.plan.price, qty: c.qty, amount: c.plan.price * c.qty }))
-          }, ...p]);
+          });
           setShowModal(false); resetModal();
           alert(`SIM order created!\nOrder ID: ${res.orderId}`);
         } else alert('Failed: ' + (res.msg || 'Unknown error'));
