@@ -17,14 +17,25 @@ import SettingsPage from './pages/SettingsPage';
 import InquiryService from './pages/InquiryService';
 import GeneralPlaceholder from './pages/GeneralPlaceholder';
 import ApiConsole from './components/ApiConsole';
+import LoginScreen from './components/LoginScreen';
+import { useAuth } from './auth/AuthContext';
 
 function App() {
+  const { user, loading, firebaseEnabled } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activePage, setActivePage] = useState('daily-notice');
 
   const toggleSidebar = () => {
     setIsSidebarCollapsed(!isSidebarCollapsed);
   };
+
+  // Gate đăng nhập (chỉ khi đã cấu hình Firebase)
+  if (firebaseEnabled && loading) {
+    return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted, #8a97a8)' }}>Đang tải…</div>;
+  }
+  if (firebaseEnabled && !user) {
+    return <LoginScreen />;
+  }
 
   const renderActivePage = () => {
     switch (activePage) {
