@@ -5,8 +5,8 @@ import { useAuth } from '../auth/AuthContext';
 import { fetchRecords, addRecord, lsSaveAll } from '../utils/dataStore';
 import { firebaseEnabled } from '../firebase';
 
-// Tên tài khoản hiển thị duy nhất ở ô Company (theo môi trường đang kết nối)
-function getAccountName() {
+// Fallback nếu chưa có profile
+function getAccountNameFallback() {
   return getApiConfig().environment === 'prod' ? 'SimDuLich.VN' : 'SDL';
 }
 import PlanSelectorPanel from '../components/PlanSelectorPanel';
@@ -115,7 +115,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const [filterStartDate,  setFilterStartDate]  = useState('2026-06-01');
   const [filterEndDate,    setFilterEndDate]    = useState('2026-06-30');
   const [activeFilters,    setActiveFilters]    = useState({ orderId: '', ecomOrder: '', type: '', history: '' });
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const uid = user?.uid;
   const [orders,           setOrders]           = useState([]);
   const [ordersLoaded,     setOrdersLoaded]     = useState(false);
@@ -142,14 +142,15 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
 
   // Thêm đơn mới: Firestore (addDoc) hoặc state cục bộ.
   const saveOrderRow = async (row) => {
+    const enriched = { ...row, ownerName: accountName };
     if (firebaseEnabled && uid) {
       try {
-        const saved = await addRecord('orders', uid, row);
+        const saved = await addRecord('orders', uid, enriched, profile?.parentId || null);
         setOrders(p => [saved, ...p]);
         return;
       } catch (e) { console.error('Firestore save order failed:', e); }
     }
-    setOrders(p => [{ ...row, id: row.id ?? Date.now() }, ...p]);
+    setOrders(p => [{ ...enriched, id: row.id ?? Date.now() }, ...p]);
   };
 
   // Modal
@@ -218,7 +219,12 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [detailTab, setDetailTab] = useState('info'); // 'info' | 'history'
 
-  const accountName = getAccountName();
+  // Tên hiển thị ở Company: dùng displayName của profile, bỏ @domain nếu là email
+  const rawName = profile?.displayName || getAccountNameFallback();
+  const accountName = rawName.includes('@') ? rawName.split('@')[0] : rawName;
+
+  // Auto-fill company khi profile load xong
+  useEffect(() => { if (accountName && !company) setCompany(accountName); }, [accountName]);
 
   // ── list ────────────────────────────────────────────────────────────────
   const handleSearch = (e) => {

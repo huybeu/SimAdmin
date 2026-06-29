@@ -8,12 +8,14 @@ import {
   GitCompare, 
   Mail, 
   RotateCcw, 
-  Settings, 
+  Settings,
   MessageSquare,
-  ChevronRight 
+  Users,
+  ChevronRight
 } from 'lucide-react';
+import { isPageAllowed } from '../lib/roles';
 
-const Sidebar = ({ isCollapsed, activePage, setActivePage }) => {
+const Sidebar = ({ isCollapsed, activePage, setActivePage, role }) => {
   // Keep System submenu open by default
   const [openSubmenus, setOpenSubmenus] = useState({
     system: true,
@@ -65,11 +67,10 @@ const Sidebar = ({ isCollapsed, activePage, setActivePage }) => {
     },
     {
       key: 'shipping-system',
-      label: 'Hệ thống Giao hàng',
+      label: 'Tạo eSIM',
       icon: <Truck size={16} />,
       hasSubmenu: true,
       subItems: [
-        { key: 'my-order-new', label: 'Nhập eSIM' },
         { key: 'my-order', label: 'Xem thông tin đơn hàng' }
       ]
     },
@@ -81,6 +82,11 @@ const Sidebar = ({ isCollapsed, activePage, setActivePage }) => {
       subItems: [
         { key: 'my-topup', label: 'Lịch sử nạp thẻ' }
       ]
+    },
+    {
+      key: 'manage-agents',
+      label: 'Quản lý đại lý',
+      icon: <Users size={16} />
     },
     {
       key: 'order-matching',
@@ -128,10 +134,22 @@ const Sidebar = ({ isCollapsed, activePage, setActivePage }) => {
     }
   };
 
+  const visibleItems = menuItems
+    .map((item) => {
+      // Role chưa load (profile null) → hiển thị hết, không ẩn menu
+      if (!role) return item;
+      if (item.subItems) {
+        const subs = item.subItems.filter((s) => isPageAllowed(role, s.key));
+        return subs.length ? { ...item, subItems: subs } : null;
+      }
+      return isPageAllowed(role, item.key) ? item : null;
+    })
+    .filter(Boolean);
+
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
       <ul className="sidebar-menu">
-        {menuItems.map((item) => {
+        {visibleItems.map((item) => {
           const isSubmenuOpen = openSubmenus[item.key];
           const hasActiveSubItem = item.subItems?.some(sub => sub.key === activePage);
           const isItemActive = activePage === item.key || hasActiveSubItem;

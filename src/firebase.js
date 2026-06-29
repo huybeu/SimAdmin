@@ -14,6 +14,7 @@ const cfg = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+export const firebaseConfig = cfg;
 export const firebaseEnabled = Boolean(cfg.apiKey && cfg.projectId);
 
 let app = null;

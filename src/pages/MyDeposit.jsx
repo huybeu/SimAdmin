@@ -61,8 +61,10 @@ const MyDeposit = () => {
   const [filterStartDate, setFilterStartDate] = useState('2026-06-01');
   const [filterEndDate, setFilterEndDate] = useState('2026-06-30');
   const [activeFilters, setActiveFilters] = useState({ orderId: '', cardNum: '' });
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const uid = user?.uid;
+  const rawOwner = profile?.displayName || getAccountName();
+  const ownerName = rawOwner.includes('@') ? rawOwner.split('@')[0] : rawOwner;
   const [deposits, setDeposits] = useState([]);
   const [depositsLoaded, setDepositsLoaded] = useState(false);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
@@ -133,7 +135,8 @@ const MyDeposit = () => {
   const [selectedDeposit, setSelectedDeposit] = useState(null);
   const [detailTab, setDetailTab] = useState('info'); // 'info' | 'history'
 
-  const accountName = getAccountName();
+  // Auto-fill company khi profile load xong
+  useEffect(() => { if (ownerName && !company) setCompany(ownerName); }, [ownerName]);
 
   // Verify
   const [verifyTarget, setVerifyTarget] = useState(null); // { rowIdx, simIdx }
@@ -245,11 +248,11 @@ const MyDeposit = () => {
           date: now,
           quantity: prodList.length, status: 'Success',
           history: `top-up success by ${company || 'company'} ${now}`,
-          productType: 'Top-Up SIM', company, note, items
+          productType: 'Top-Up SIM', company, note, items, ownerName
         };
         if (firebaseEnabled && uid) {
           try {
-            const saved = await addRecord('topups', uid, newDep);
+            const saved = await addRecord('topups', uid, newDep, profile?.parentId || null);
             setDeposits(prev => [saved, ...prev]);
           } catch (e) { console.error('Firestore save topup failed:', e); setDeposits(prev => [{ ...newDep, id: Date.now() }, ...prev]); }
         } else {
@@ -540,7 +543,7 @@ const MyDeposit = () => {
                       <select value={company} onChange={e => setCompany(e.target.value)}
                         style={{ width: '100%', padding: '7px 10px', border: `1px solid ${company ? '#ccc' : '#e74c3c'}`, borderRadius: '4px', fontSize: '12px', background: 'white', marginBottom: '12px', color: company ? '#333' : '#999' }}>
                         <option value="">-- Chọn công ty (bắt buộc) --</option>
-                        <option value={accountName}>{accountName}</option>
+                        <option value={ownerName}>{ownerName}</option>
                       </select>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                         <label style={{ fontSize: '12px', color: '#555', paddingTop: '7px', flexShrink: 0, width: '50px' }}>Note</label>
