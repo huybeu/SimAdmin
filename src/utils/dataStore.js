@@ -1,6 +1,6 @@
 // Lớp dữ liệu: Firestore khi đã cấu hình + đăng nhập, ngược lại fallback localStorage.
 import { db, firebaseEnabled } from '../firebase';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 
 const LS_KEY = { orders: 'simadmin_my_orders', topups: 'simadmin_my_topups' };
 
@@ -85,4 +85,28 @@ export async function addRecord(name, uid, record, parentId = null) {
     return { ...payload, id: ref.id };
   }
   return null;
+}
+
+// ── Cấu hình chung toàn hệ thống: 1 document cố định trong collection 'config' ──
+// Khác orders/topups: không phải danh sách, không gắn uid (chung mọi admin).
+
+/** Đọc 1 config doc. Firestore → data; ngược lại localStorage; null nếu chưa có (caller dùng mặc định). */
+export async function fetchConfig(name) {
+  if (firebaseEnabled) {
+    const snap = await getDoc(doc(db, 'config', name));
+    return snap.exists() ? snap.data() : null;
+  }
+  try {
+    const s = localStorage.getItem(`config_${name}`);
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
+}
+
+/** Ghi đè 1 config doc. Firestore → setDoc + updatedAt; ngược lại localStorage. */
+export async function saveConfig(name, data) {
+  if (firebaseEnabled) {
+    await setDoc(doc(db, 'config', name), { ...data, updatedAt: Date.now() });
+  } else {
+    try { localStorage.setItem(`config_${name}`, JSON.stringify(data)); } catch { /* ignore */ }
+  }
 }

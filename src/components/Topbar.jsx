@@ -78,13 +78,11 @@ const Topbar = ({ isSidebarCollapsed, toggleSidebar }) => {
               <Settings size={14} />
               <span>Cấu hình</span>
             </div>
-            {firebaseEnabled && (
-              <div className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                onClick={() => logout()}>
-                <LogOut size={14} />
-                <span>Đăng xuất</span>
-              </div>
-            )}
+            <div className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              onClick={() => logout()}>
+              <LogOut size={14} />
+              <span>Đăng xuất</span>
+            </div>
           </div>
         </div>
       </div>

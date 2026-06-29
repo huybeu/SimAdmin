@@ -28,10 +28,14 @@ const Sidebar = ({ isCollapsed, activePage, setActivePage, role }) => {
   });
 
   const toggleSubmenu = (menuKey) => {
-    setOpenSubmenus(prev => ({
-      ...prev,
-      [menuKey]: !prev[menuKey]
-    }));
+    setOpenSubmenus(prev => {
+      const isCurrentlyOpen = prev[menuKey];
+      const allClosed = Object.keys(prev).reduce((acc, key) => {
+        acc[key] = false;
+        return acc;
+      }, {});
+      return { ...allClosed, [menuKey]: !isCurrentlyOpen };
+    });
   };
 
   const menuItems = [
@@ -53,7 +57,8 @@ const Sidebar = ({ isCollapsed, activePage, setActivePage, role }) => {
       icon: <FileText size={16} />,
       hasSubmenu: true,
       subItems: [
-        { key: 'my-quote', label: 'Báo giá của tôi' }
+        { key: 'my-quote', label: 'Báo giá của tôi' },
+        { key: 'price-config', label: 'Cấu hình giá' }
       ]
     },
     {

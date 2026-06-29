@@ -30,7 +30,6 @@ async function loadOrCreateProfile(u) {
   return profile;
 }
 
-// Thử tối đa maxAttempts lần, delay 1s giữa mỗi lần.
 async function loadWithRetry(u, maxAttempts = 3) {
   let lastErr;
   for (let i = 0; i < maxAttempts; i++) {
@@ -44,10 +43,11 @@ async function loadWithRetry(u, maxAttempts = 3) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser]               = useState(null);
-  const [profile, setProfile]         = useState(null);
+  const [user, setUser]                 = useState(null);
+  const [profile, setProfile]           = useState(null);
   const [profileError, setProfileError] = useState(null);
-  const [loading, setLoading]         = useState(firebaseEnabled);
+  const [loading, setLoading]           = useState(firebaseEnabled);
+  const [authenticated, setAuthenticated] = useState(!firebaseEnabled);
 
   const doLoadProfile = useCallback(async (u) => {
     if (!u) { setProfile(null); setProfileError(null); return; }
@@ -65,13 +65,13 @@ export function AuthProvider({ children }) {
     if (!firebaseEnabled) { setLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      setAuthenticated(!!u);
       await doLoadProfile(u);
       setLoading(false);
     });
     return unsub;
   }, [doLoadProfile]);
 
-  // Gọi lại thủ công (nút "Tải lại") khi Rules đã được publish
   const retryProfile = useCallback(async () => {
     if (!auth.currentUser) return;
     setLoading(true);
@@ -89,13 +89,16 @@ export function AuthProvider({ children }) {
 
   const login  = (email, pw) => signInWithEmailAndPassword(auth, email, pw);
   const signup = (email, pw) => createUserWithEmailAndPassword(auth, email, pw);
-  const logout = () => signOut(auth);
+  const logout = async () => {
+    if (firebaseEnabled) await signOut(auth);
+    setAuthenticated(false);
+  };
 
   const role = profile?.role || null;
 
   return (
     <AuthContext.Provider value={{
-      user, profile, role, loading,
+      user, profile, role, loading, authenticated,
       profileError, retryProfile,
       login, signup, logout, refreshProfile, firebaseEnabled,
     }}>
