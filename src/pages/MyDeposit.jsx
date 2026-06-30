@@ -3,7 +3,7 @@ import { Search, Trash2, Plus, X, Heart, CheckCircle, AlertCircle, Upload, Zap, 
 import { topupSim, remoteActivation, trafficReset, verifySimCard, searchMyQuotations, getApiConfig } from '../utils/api';
 import PlanSelectorPanel from '../components/PlanSelectorPanel';
 import { useAuth } from '../auth/AuthContext';
-import { fetchRecords, addRecord, lsSaveAll } from '../utils/dataStore';
+import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll } from '../utils/dataStore';
 import { firebaseEnabled } from '../firebase';
 
 // Tên tài khoản hiển thị duy nhất ở ô Company (theo môi trường đang kết nối)
@@ -61,7 +61,7 @@ const MyDeposit = () => {
   const [filterStartDate, setFilterStartDate] = useState('2026-06-01');
   const [filterEndDate, setFilterEndDate] = useState('2026-06-30');
   const [activeFilters, setActiveFilters] = useState({ orderId: '', cardNum: '' });
-  const { user, profile } = useAuth();
+  const { user, profile, role } = useAuth();
   const uid = user?.uid;
   const rawOwner = profile?.displayName || getAccountName();
   const ownerName = rawOwner.includes('@') ? rawOwner.split('@')[0] : rawOwner;
@@ -69,17 +69,31 @@ const MyDeposit = () => {
   const [depositsLoaded, setDepositsLoaded] = useState(false);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
 
-  // Load top-up: Firestore (đã đăng nhập) hoặc localStorage; rỗng → mock seed.
+  // ── Kiểm tra cấu hình giá (giống MyShip) ─────────────────────────────
+  const [configReady,   setConfigReady]   = useState(role === 'admin');
+  const [configChecked, setConfigChecked] = useState(role === 'admin');
+
   useEffect(() => {
+    if (role === 'admin') { setConfigReady(true); setConfigChecked(true); return; }
+    if (!firebaseEnabled || !role) return;
+    fetchConfig('pricing')
+      .then(cfg => setConfigReady(!!cfg))
+      .catch(() => setConfigReady(false))
+      .finally(() => setConfigChecked(true));
+  }, [role]);
+
+  // Load top-up theo vai trò: admin → tất cả, tong_kho → mình + con, dai_ly → mình.
+  useEffect(() => {
+    if (!uid || !role) return;
     let cancelled = false;
     (async () => {
-      const rows = await fetchRecords('topups', uid);
+      const rows = await fetchRecordsForRole('topups', { uid, role });
       if (cancelled) return;
       setDeposits(rows ?? MOCK_DEPOSITS);
       setDepositsLoaded(true);
     })();
     return () => { cancelled = true; };
-  }, [uid]);
+  }, [uid, role]);
 
   // Chỉ ghi localStorage khi KHÔNG dùng Firestore.
   useEffect(() => {
@@ -316,9 +330,22 @@ const MyDeposit = () => {
             </div>
           </form>
 
+          {/* ── Cảnh báo chưa cấu hình giá ── */}
+          {configChecked && !configReady && role !== 'admin' && (
+            <div style={{ marginBottom: '14px', padding: '12px 16px', background: 'rgba(231,76,60,0.08)', border: '1px solid rgba(231,76,60,0.3)', borderRadius: '8px', color: '#e74c3c', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '18px' }}>🔒</span>
+              <span>
+                <strong>Chưa thể nạp thẻ.</strong> Quản trị viên chưa cấu hình giá hệ thống.
+                Vui lòng liên hệ cấp trên để thiết lập cấu hình trước khi thực hiện.
+              </span>
+            </div>
+          )}
+
           {/* Add button */}
-          <button className="btn btn-teal" style={{ marginBottom: '16px', padding: '7px 20px', fontWeight: 'bold' }}
-            onClick={() => { setShowModal(true); setModalTab('multiple'); }}>
+          <button className="btn btn-teal"
+            style={{ marginBottom: '16px', padding: '7px 20px', fontWeight: 'bold', opacity: configReady ? 1 : 0.4, cursor: configReady ? 'pointer' : 'not-allowed' }}
+            onClick={() => { if (!configReady) return; setShowModal(true); setModalTab('multiple'); }}
+            title={configReady ? '' : 'Quản trị viên chưa cấu hình giá'}>
             Add
           </button>
 
@@ -340,6 +367,9 @@ const MyDeposit = () => {
                   <th style={{ padding: '10px 14px' }}>Order number ↕</th>
                   <th style={{ padding: '10px 14px' }}>Order Date ↕</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Quantity ↕</th>
+                  {(role === 'admin' || role === 'tong_kho') && (
+                    <th style={{ padding: '10px 14px' }}>Tài khoản ↕</th>
+                  )}
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Status ↕</th>
                   <th style={{ padding: '10px 14px' }}>Lastest History ↕</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Actions</th>
@@ -353,6 +383,11 @@ const MyDeposit = () => {
                         onClick={() => { setSelectedDeposit(row); setDetailTab('info'); }}>{row.orderId}</td>
                       <td className="notice-cell" style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{row.date}</td>
                       <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold' }}>{row.quantity}</td>
+                      {(role === 'admin' || role === 'tong_kho') && (
+                        <td className="notice-cell" style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                          {row.ownerName || row.company || '—'}
+                        </td>
+                      )}
                       <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'center' }}>
                         <span style={{ background: row.status === 'Success' ? 'rgba(32,158,145,0.15)' : 'rgba(240,173,78,0.15)', color: row.status === 'Success' ? 'var(--teal-primary)' : 'var(--orange-primary)', border: `1px solid ${row.status === 'Success' ? 'rgba(32,158,145,0.25)' : 'rgba(240,173,78,0.25)'}`, padding: '2px 8px', borderRadius: '3px', fontSize: '11px', fontWeight: 'bold' }}>
                           {row.status}
@@ -374,7 +409,7 @@ const MyDeposit = () => {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan="6" className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No records found.</td></tr>
+                  <tr><td colSpan={role === 'admin' || role === 'tong_kho' ? 7 : 6} className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No records found.</td></tr>
                 )}
               </tbody>
             </table>
