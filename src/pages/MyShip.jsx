@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { createEsimOrder, createSimOrder, topupSim, searchMyQuotations, getApiConfig } from '../utils/api';
 import { useAuth } from '../auth/AuthContext';
-import { fetchRecords, addRecord, lsSaveAll } from '../utils/dataStore';
+import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll } from '../utils/dataStore';
 import { firebaseEnabled } from '../firebase';
 
 // Fallback nếu chưa có profile
@@ -115,30 +115,44 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const [filterStartDate,  setFilterStartDate]  = useState('2026-06-01');
   const [filterEndDate,    setFilterEndDate]    = useState('2026-06-30');
   const [activeFilters,    setActiveFilters]    = useState({ orderId: '', ecomOrder: '', type: '', history: '' });
-  const { user, profile } = useAuth();
+  const { user, profile, role } = useAuth();
   const uid = user?.uid;
   const [orders,           setOrders]           = useState([]);
   const [ordersLoaded,     setOrdersLoaded]     = useState(false);
   const [perPage,          setPerPage]          = useState(10);
 
-  // Load đơn: Firestore (đã đăng nhập) hoặc localStorage; rỗng → mock seed.
+  // ── Kiểm tra cấu hình giá (admin phải lưu trước) ──────────────────────
+  const [configReady,   setConfigReady]   = useState(role === 'admin');
+  const [configChecked, setConfigChecked] = useState(role === 'admin');
+
   useEffect(() => {
+    if (role === 'admin') { setConfigReady(true); setConfigChecked(true); return; }
+    if (!firebaseEnabled || !role) return;
+    fetchConfig('pricing')
+      .then(cfg => setConfigReady(!!cfg))
+      .catch(() => setConfigReady(false))
+      .finally(() => setConfigChecked(true));
+  }, [role]);
+
+  // Load đơn theo vai trò: admin → tất cả, tong_kho → mình + con, dai_ly → mình.
+  useEffect(() => {
+    if (!uid || !role) return;
     let cancelled = false;
     (async () => {
-      const rows = await fetchRecords('orders', uid);
+      const rows = await fetchRecordsForRole('orders', { uid, role });
       if (cancelled) return;
       setOrders(rows ?? MOCK_ORDERS);
       setOrdersLoaded(true);
     })();
     return () => { cancelled = true; };
-  }, [uid]);
+  }, [uid, role]);
 
-  // Chỉ ghi localStorage khi KHÔNG dùng Firestore (Firestore tự lưu khi tạo đơn).
+  // Chỉ ghi localStorage khi không dùng Firestore
   useEffect(() => {
     if (firebaseEnabled && uid) return;
     if (!ordersLoaded) return;
     lsSaveAll('orders', orders);
-  }, [orders, ordersLoaded, uid]);
+  }, [orders, ordersLoaded, uid]);  // eslint-disable-line
 
   // Thêm đơn mới: Firestore (addDoc) hoặc state cục bộ.
   const saveOrderRow = async (row) => {
@@ -401,9 +415,22 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
             </div>
           </form>
 
+          {/* ── Cảnh báo chưa cấu hình giá ── */}
+          {configChecked && !configReady && role !== 'admin' && (
+            <div style={{ marginBottom: '14px', padding: '12px 16px', background: 'rgba(231,76,60,0.08)', border: '1px solid rgba(231,76,60,0.3)', borderRadius: '8px', color: '#e74c3c', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '18px' }}>🔒</span>
+              <span>
+                <strong>Chưa thể đặt đơn.</strong> Quản trị viên chưa cấu hình giá hệ thống.
+                Vui lòng liên hệ cấp trên để thiết lập cấu hình trước khi đặt hàng.
+              </span>
+            </div>
+          )}
+
           {/* Add button */}
-          <button className="btn btn-teal" style={{ marginBottom: '16px', padding: '7px 20px', fontWeight: 'bold' }}
-            onClick={() => { setShowModal(true); setTab('esim'); }}>
+          <button className="btn btn-teal"
+            style={{ marginBottom: '16px', padding: '7px 20px', fontWeight: 'bold', opacity: configReady ? 1 : 0.4, cursor: configReady ? 'pointer' : 'not-allowed' }}
+            onClick={() => { if (!configReady) return; setShowModal(true); setTab('esim'); }}
+            title={configReady ? '' : 'Quản trị viên chưa cấu hình giá'}>
             Add
           </button>
 
@@ -427,6 +454,9 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                   <th style={{ padding: '10px 14px' }}>Order Date ↕</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Quantity ↕</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Product Type ↕</th>
+                  {(role === 'admin' || role === 'tong_kho') && (
+                    <th style={{ padding: '10px 14px' }}>Tài khoản ↕</th>
+                  )}
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Status ↕</th>
                   <th style={{ padding: '10px 14px' }}>Lastest History ↕</th>
                 </tr>
@@ -442,6 +472,11 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                     <td className="notice-cell" style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{row.date}</td>
                     <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 'bold' }}>{row.quantity}</td>
                     <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'center' }}>{row.type}</td>
+                    {(role === 'admin' || role === 'tong_kho') && (
+                      <td className="notice-cell" style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                        {row.ownerName || row.company || '—'}
+                      </td>
+                    )}
                     <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'center' }}>
                       <span style={{ background: 'rgba(32,158,145,0.15)', color: 'var(--teal-primary)', border: '1px solid rgba(32,158,145,0.25)', padding: '2px 8px', borderRadius: '3px', fontSize: '11px', fontWeight: 'bold' }}>
                         {row.status}
@@ -451,7 +486,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan="7" className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No records found.</td></tr>
+                  <tr><td colSpan={role === 'admin' || role === 'tong_kho' ? 8 : 7} className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>No records found.</td></tr>
                 )}
               </tbody>
             </table>
