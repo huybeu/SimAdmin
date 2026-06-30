@@ -24,7 +24,7 @@ export default function ManageAgents() {
   const [error, setError] = useState('');
 
   const roleOptions = creatableRoles(role);
-  const [form, setForm] = useState({ email: '', password: '', displayName: '', role: roleOptions[0] || 'dai_ly', markupVnd: 0 });
+  const [form, setForm] = useState({ email: '', password: '', displayName: '', role: roleOptions[0] || 'dai_ly', markupVnd: 0, creditLimit: 0 });
   const [creating, setCreating] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -68,11 +68,13 @@ export default function ManageAgents() {
         displayName: form.displayName.trim() || form.email.trim(),
         parentId,
         markupVnd: Number(form.markupVnd) || 0,
+        creditLimit: Number(form.creditLimit) || 0,
+        totalDebt: 0,
         active: true,
         createdAt: Date.now(),
       });
       setMsg('✓ Tạo tài khoản thành công.');
-      setForm({ email: '', password: '', displayName: '', role: roleOptions[0] || 'dai_ly', markupVnd: 0 });
+      setForm({ email: '', password: '', displayName: '', role: roleOptions[0] || 'dai_ly', markupVnd: 0, creditLimit: 0 });
       await load();
     } catch (e) {
       const code = e.code || '';
@@ -146,6 +148,10 @@ export default function ManageAgents() {
               <label style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Markup (VND)</label>
               <input style={{ ...inp, width: '110px' }} type="number" min="0" value={form.markupVnd} onChange={e => setForm({ ...form, markupVnd: e.target.value })} />
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Hạn mức nợ (NT$)</label>
+              <input style={{ ...inp, width: '120px' }} type="number" min="0" value={form.creditLimit} onChange={e => setForm({ ...form, creditLimit: e.target.value })} placeholder="0 = không giới hạn" />
+            </div>
             <button type="submit" className="btn btn-teal" style={{ padding: '8px 20px', fontWeight: 'bold' }} disabled={creating}>
               {creating ? 'Đang tạo…' : 'Tạo'}
             </button>
@@ -167,6 +173,8 @@ export default function ManageAgents() {
                   <th style={{ padding: '10px 14px' }}>Tên hiển thị</th>
                   <th style={{ padding: '10px 14px' }}>Vai trò</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Markup (VND)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Hạn mức nợ (NT$)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Dư nợ (NT$)</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Trạng thái</th>
                 </tr>
               </thead>
@@ -189,6 +197,12 @@ export default function ManageAgents() {
                       <input type="number" min="0" defaultValue={u.markupVnd || 0} onBlur={e => changeMarkup(u, e.target.value)}
                         style={{ ...inp, width: '90px', textAlign: 'center' }} />
                     </td>
+                    <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'right', fontSize: '12px', color: 'var(--text-muted)' }}>
+                      {(u.creditLimit || 0) > 0 ? (u.creditLimit).toLocaleString() : '∞'}
+                    </td>
+                    <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: (u.totalDebt || 0) > 0 ? '#e74c3c' : 'var(--text-muted)' }}>
+                      {(u.totalDebt || 0).toLocaleString()}
+                    </td>
                     <td className="notice-cell" style={{ padding: '10px 14px', textAlign: 'center' }}>
                       <button onClick={() => toggleActive(u)} className={`btn ${u.active ? 'btn-red' : 'btn-teal'}`} style={{ padding: '3px 10px', fontSize: '11px' }}>
                         {u.active ? 'Khoá' : 'Mở khoá'}
@@ -197,7 +211,7 @@ export default function ManageAgents() {
                   </tr>
                 ))}
                 {users.length === 0 && (
-                  <tr><td colSpan="5" className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>Chưa có tài khoản cấp dưới.</td></tr>
+                  <tr><td colSpan="7" className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>Chưa có tài khoản cấp dưới.</td></tr>
                 )}
               </tbody>
             </table>
