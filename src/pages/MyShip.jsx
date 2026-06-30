@@ -3,6 +3,7 @@ import { Trash2, X } from 'lucide-react';
 import { createEsimOrder, createSimOrder, topupSim, searchMyQuotations, getApiConfig } from '../utils/api';
 import { useAuth } from '../auth/AuthContext';
 import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll } from '../utils/dataStore';
+import { recordDebt } from '../utils/debtStore';
 import { firebaseEnabled } from '../firebase';
 
 // Fallback nếu chưa có profile
@@ -115,7 +116,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const [filterStartDate,  setFilterStartDate]  = useState('2026-06-01');
   const [filterEndDate,    setFilterEndDate]    = useState('2026-06-30');
   const [activeFilters,    setActiveFilters]    = useState({ orderId: '', ecomOrder: '', type: '', history: '' });
-  const { user, profile, role } = useAuth();
+  const { user, profile, role, refreshProfile } = useAuth();
   const uid = user?.uid;
   const [orders,           setOrders]           = useState([]);
   const [ordersLoaded,     setOrdersLoaded]     = useState(false);
@@ -154,13 +155,26 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
     lsSaveAll('orders', orders);
   }, [orders, ordersLoaded, uid]);  // eslint-disable-line
 
-  // Thêm đơn mới: Firestore (addDoc) hoặc state cục bộ.
+  // Thêm đơn mới: Firestore (addDoc) hoặc state cục bộ + ghi nợ tự động.
   const saveOrderRow = async (row) => {
     const enriched = { ...row, ownerName: accountName };
     if (firebaseEnabled && uid) {
       try {
         const saved = await addRecord('orders', uid, enriched, profile?.parentId || null);
         setOrders(p => [saved, ...p]);
+        // Ghi nợ tự động sau khi lưu đơn thành công
+        const orderAmount = (row.items || []).reduce((s, i) => s + (i.amount || 0), 0);
+        if (orderAmount > 0) {
+          try {
+            await recordDebt(uid, {
+              orderId: saved.id,
+              amount: orderAmount,
+              parentId: profile?.parentId || null,
+              note: `Đơn ${row.orderId} — ${row.type}`,
+            });
+            refreshProfile?.();
+          } catch (debtErr) { console.error('recordDebt failed:', debtErr); }
+        }
         return;
       } catch (e) { console.error('Firestore save order failed:', e); }
     }

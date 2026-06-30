@@ -4,6 +4,7 @@ import { topupSim, remoteActivation, trafficReset, verifySimCard, searchMyQuotat
 import PlanSelectorPanel from '../components/PlanSelectorPanel';
 import { useAuth } from '../auth/AuthContext';
 import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll } from '../utils/dataStore';
+import { recordDebt } from '../utils/debtStore';
 import { firebaseEnabled } from '../firebase';
 
 // Tên tài khoản hiển thị duy nhất ở ô Company (theo môi trường đang kết nối)
@@ -61,7 +62,7 @@ const MyDeposit = () => {
   const [filterStartDate, setFilterStartDate] = useState('2026-06-01');
   const [filterEndDate, setFilterEndDate] = useState('2026-06-30');
   const [activeFilters, setActiveFilters] = useState({ orderId: '', cardNum: '' });
-  const { user, profile, role } = useAuth();
+  const { user, profile, role, refreshProfile } = useAuth();
   const uid = user?.uid;
   const rawOwner = profile?.displayName || getAccountName();
   const ownerName = rawOwner.includes('@') ? rawOwner.split('@')[0] : rawOwner;
@@ -268,6 +269,19 @@ const MyDeposit = () => {
           try {
             const saved = await addRecord('topups', uid, newDep, profile?.parentId || null);
             setDeposits(prev => [saved, ...prev]);
+            // Ghi nợ tự động
+            const topupAmount = items.reduce((s, i) => s + (i.price || 0) * (i.day || 1), 0);
+            if (topupAmount > 0) {
+              try {
+                await recordDebt(uid, {
+                  orderId: saved.id,
+                  amount: topupAmount,
+                  parentId: profile?.parentId || null,
+                  note: `Top-up ${res.orderId} — ${prodList.length} SIM`,
+                });
+                refreshProfile?.();
+              } catch (debtErr) { console.error('recordDebt topup failed:', debtErr); }
+            }
           } catch (e) { console.error('Firestore save topup failed:', e); setDeposits(prev => [{ ...newDep, id: Date.now() }, ...prev]); }
         } else {
           setDeposits(prev => [{ ...newDep, id: Date.now() }, ...prev]);
