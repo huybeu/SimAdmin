@@ -17,6 +17,8 @@ import ReturnOrders from './pages/ReturnOrders';
 import ReturnAuto from './pages/ReturnAuto';
 import SettingsPage from './pages/SettingsPage';
 import InquiryService from './pages/InquiryService';
+import DebtManagement from './pages/DebtManagement';
+import MyDebt from './pages/MyDebt';
 import GeneralPlaceholder from './pages/GeneralPlaceholder';
 import ApiConsole from './components/ApiConsole';
 import LoginScreen from './components/LoginScreen';
@@ -85,6 +87,8 @@ function App() {
       case 'refund-auto':       return <ReturnAuto />;
       case 'settings':          return <SettingsPage />;
       case 'inquiry-service':   return <InquiryService />;
+      case 'debt-management':   return <DebtManagement />;
+      case 'my-debt':           return <MyDebt />;
       default:                  return <GeneralPlaceholder pageKey={activePage} />;
     }
   };

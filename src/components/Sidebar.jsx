@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { 
-  Laptop, 
-  FileText, 
-  CreditCard, 
-  Truck, 
-  Zap, 
-  GitCompare, 
-  Mail, 
-  RotateCcw, 
+import {
+  Laptop,
+  FileText,
+  CreditCard,
+  Truck,
+  Zap,
+  GitCompare,
+  Mail,
+  RotateCcw,
   Settings,
   MessageSquare,
   Users,
-  ChevronRight
+  ChevronRight,
+  Wallet
 } from 'lucide-react';
 import { isPageAllowed } from '../lib/roles';
 
@@ -24,7 +25,8 @@ const Sidebar = ({ isCollapsed, activePage, setActivePage, role }) => {
     'shipping-system': false,
     'topup-system': false,
     'mail-management-menu': false,
-    'return-management-menu': false
+    'return-management-menu': false,
+    'debt-system': false,
   });
 
   const toggleSubmenu = (menuKey) => {
@@ -121,6 +123,16 @@ const Sidebar = ({ isCollapsed, activePage, setActivePage, role }) => {
       key: 'settings',
       label: 'Cấu hình hệ thống',
       icon: <Settings size={16} />
+    },
+    {
+      key: 'debt-system',
+      label: 'Quản lý Công nợ',
+      icon: <Wallet size={16} />,
+      hasSubmenu: true,
+      subItems: [
+        { key: 'debt-management', label: 'Sổ cái công nợ' },
+        { key: 'my-debt', label: 'Công nợ của tôi' },
+      ]
     },
     {
       key: 'inquiry-service',

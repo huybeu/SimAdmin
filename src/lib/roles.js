@@ -25,8 +25,10 @@ export const ROLE_PAGES = {
     'my-bill',
     'refund-order', 'refund-auto',
     'inquiry-service',
+    'debt-management',
+    'my-debt',
   ],
-  dai_ly: [...ORDER_PAGES],
+  dai_ly: [...ORDER_PAGES, 'my-debt'],
 };
 
 export function isPageAllowed(role, key) {
