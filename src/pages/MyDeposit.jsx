@@ -242,8 +242,9 @@ const MyDeposit = () => {
 
   const removeRow = (rowIdx) => setCartRows(prev => prev.filter((_, i) => i !== rowIdx));
 
-  const totalQty = cartRows.reduce((s, r) => s + r.simNums.filter(Boolean).length, 0);
-  const totalPrice = cartRows.reduce((s, r) => s + r.plan.price * r.simNums.filter(Boolean).length, 0);
+  // Đếm tất cả slot SIM (kể cả chưa điền) để hiện tổng ước tính
+  const totalQty   = cartRows.reduce((s, r) => s + r.simNums.length, 0);
+  const totalPrice = cartRows.reduce((s, r) => s + r.plan.price * r.days * r.simNums.length, 0);
 
   const handleVerify = async (rowIdx, simIdx) => {
     const simNum = cartRows[rowIdx].simNums[simIdx];
@@ -605,8 +606,12 @@ const MyDeposit = () => {
                           )
                         )}
                         <tr style={{ background: '#f9f9f9' }}>
-                          <td colSpan="2" style={{ padding: '8px 10px', border: '1px solid #e0e0e0', fontWeight: '600' }}>Total</td>
-                          <td style={{ padding: '8px 10px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>{totalPrice.toLocaleString('vi-VN')} ₫</td>
+                          <td colSpan="2" style={{ padding: '8px 10px', border: '1px solid #e0e0e0', fontWeight: '600' }}>
+                            Total — {totalQty} SIM
+                          </td>
+                          <td style={{ padding: '8px 10px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600', color: '#1a9e8e' }}>
+                            {totalPrice.toLocaleString('vi-VN')} ₫
+                          </td>
                           <td colSpan="3" style={{ padding: '8px 10px', border: '1px solid #e0e0e0' }}></td>
                         </tr>
                       </tbody>
