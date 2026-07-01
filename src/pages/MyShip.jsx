@@ -381,7 +381,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
       setSubmitting(true);
       try {
         const prodList = cart.map(c => ({ wmproductId: c.plan.wmproductId, qty: c.qty }));
-        const res = await createEsimOrder(email, prodList, false);
+        const res = await createEsimOrder(email, prodList, true);
         if (res.code === 0 && res.orderId) {
           await saveOrderRow({
             orderId: res.orderId, ecomOrder: ecomOrder || email,
