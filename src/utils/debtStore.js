@@ -22,7 +22,7 @@ export async function recordDebt(uid, { orderId = null, amount, parentId = null,
     const limit       = data.creditLimit  || 0;
 
     if (limit > 0 && current + amount > limit)
-      throw new Error(`Vượt hạn mức nợ. Còn được nợ: ${(limit - current).toLocaleString()} NT$`);
+      throw new Error(`Vượt hạn mức nợ. Còn được nợ: ${(limit - current).toLocaleString('vi-VN')} ₫`);
 
     const balanceAfter = current + amount;
     tx.update(userRef, { totalDebt: balanceAfter });
@@ -82,16 +82,14 @@ export async function setCreditLimit(uid, limitAmount) {
 export async function fetchDebtUsers(uid, role) {
   if (!firebaseEnabled) return [];
   const col = collection(db, 'users');
-  try {
-    if (role === 'admin') {
-      const snap = await getDocs(col);
-      return snap.docs.map(d => d.data()).filter(u => u.role !== 'admin');
-    }
-    if (role === 'tong_kho') {
-      const snap = await getDocs(query(col, where('parentId', '==', uid)));
-      return snap.docs.map(d => d.data());
-    }
-  } catch { return []; }
+  if (role === 'admin') {
+    const snap = await getDocs(col);
+    return snap.docs.map(d => d.data()).filter(u => u.role !== 'admin');
+  }
+  if (role === 'tong_kho') {
+    const snap = await getDocs(query(col, where('parentId', '==', uid)));
+    return snap.docs.map(d => d.data());
+  }
   return [];
 }
 
@@ -99,26 +97,24 @@ export async function fetchDebtUsers(uid, role) {
 export async function fetchDebtTransactions(uid, role) {
   if (!firebaseEnabled) return [];
   const col = collection(db, 'debt_transactions');
-  try {
-    if (role === 'admin') {
-      const snap = await getDocs(col);
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    }
-    if (role === 'tong_kho') {
-      const [own, children] = await Promise.all([
-        getDocs(query(col, where('uid', '==', uid))),
-        getDocs(query(col, where('parentId', '==', uid))).catch(() => ({ docs: [] })),
-      ]);
-      const map = new Map();
-      [...own.docs, ...children.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
-      return [...map.values()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    }
-    // dai_ly — chỉ xem của mình
-    const snap = await getDocs(query(col, where('uid', '==', uid)));
+  if (role === 'admin') {
+    const snap = await getDocs(col);
     return snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  } catch { return []; }
+  }
+  if (role === 'tong_kho') {
+    const [own, children] = await Promise.all([
+      getDocs(query(col, where('uid', '==', uid))),
+      getDocs(query(col, where('parentId', '==', uid))).catch(() => ({ docs: [] })),
+    ]);
+    const map = new Map();
+    [...own.docs, ...children.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+    return [...map.values()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }
+  // dai_ly — chỉ xem của mình
+  const snap = await getDocs(query(col, where('uid', '==', uid)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 // ── Lấy profile 1 user (dùng để hiện tên trong DebtManagement) ─────────────

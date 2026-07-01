@@ -3,8 +3,8 @@ import { Search, Trash2, Plus, X, Heart, CheckCircle, AlertCircle, Upload, Zap, 
 import { topupSim, remoteActivation, trafficReset, verifySimCard, searchMyQuotations, getApiConfig } from '../utils/api';
 import PlanSelectorPanel from '../components/PlanSelectorPanel';
 import { useAuth } from '../auth/AuthContext';
-import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll } from '../utils/dataStore';
-import { recordDebt } from '../utils/debtStore';
+import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll, getVndPrice } from '../utils/dataStore';
+import { recordDebt, fetchDebtUsers } from '../utils/debtStore';
 import { firebaseEnabled } from '../firebase';
 
 // Tên tài khoản hiển thị duy nhất ở ô Company (theo môi trường đang kết nối)
@@ -69,18 +69,34 @@ const MyDeposit = () => {
   const [deposits, setDeposits] = useState([]);
   const [depositsLoaded, setDepositsLoaded] = useState(false);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
+  const [managedUsers, setManagedUsers] = useState([]);
+
+  useEffect(() => {
+    if (firebaseEnabled && uid && role && (role === 'admin' || role === 'tong_kho')) {
+      fetchDebtUsers(uid, role)
+        .then(usersList => {
+          setManagedUsers(usersList || []);
+        })
+        .catch(err => console.error("fetchDebtUsers failed:", err));
+    }
+  }, [uid, role]);
 
   // ── Kiểm tra cấu hình giá (giống MyShip) ─────────────────────────────
   const [configReady,   setConfigReady]   = useState(role === 'admin');
   const [configChecked, setConfigChecked] = useState(role === 'admin');
+  const [pricingConfig, setPricingConfig] = useState(null);
 
   useEffect(() => {
-    if (role === 'admin') { setConfigReady(true); setConfigChecked(true); return; }
-    if (!firebaseEnabled || !role) return;
     fetchConfig('pricing')
-      .then(cfg => setConfigReady(!!cfg))
-      .catch(() => setConfigReady(false))
-      .finally(() => setConfigChecked(true));
+      .then(cfg => {
+        if (cfg) setPricingConfig(cfg);
+        if (role === 'admin') { setConfigReady(true); setConfigChecked(true); }
+        else { setConfigReady(!!cfg); setConfigChecked(true); }
+      })
+      .catch(() => {
+        if (role === 'admin') { setConfigReady(true); setConfigChecked(true); }
+        else { setConfigReady(false); setConfigChecked(true); }
+      });
   }, [role]);
 
   // Load top-up theo vai trò: admin → tất cả, tong_kho → mình + con, dai_ly → mình.
@@ -109,6 +125,10 @@ const MyDeposit = () => {
 
   // Plan list — loaded from real WorldMove catalog (fallback = mock).
   const [topupPlans, setTopupPlans] = useState(MOCK_TOPUP_PLANS);
+
+  const topupPlansVnd = React.useMemo(() => {
+    return topupPlans.map(p => ({ ...p, price: getVndPrice(p.price, 'SIM Top-up', pricingConfig) }));
+  }, [topupPlans, pricingConfig]);
 
   // Plan favorites
   const [planFavs, setPlanFavs] = useState(() => {
@@ -267,20 +287,27 @@ const MyDeposit = () => {
         };
         if (firebaseEnabled && uid) {
           try {
-            const saved = await addRecord('topups', uid, newDep, profile?.parentId || null);
+            const targetUser = managedUsers.find(u => (u.displayName || u.email) === company);
+            const targetUid = targetUser ? targetUser.uid : uid;
+            const targetParentId = targetUser ? targetUser.parentId : (profile?.parentId || null);
+
+            const saved = await addRecord('topups', targetUid, { ...newDep, ownerName: targetUser ? (targetUser.displayName || targetUser.email) : ownerName }, targetParentId);
             setDeposits(prev => [saved, ...prev]);
             // Ghi nợ tự động
             const topupAmount = items.reduce((s, i) => s + (i.price || 0) * (i.day || 1), 0);
             if (topupAmount > 0) {
               try {
-                await recordDebt(uid, {
+                await recordDebt(targetUid, {
                   orderId: saved.id,
                   amount: topupAmount,
-                  parentId: profile?.parentId || null,
+                  parentId: targetParentId,
                   note: `Top-up ${res.orderId} — ${prodList.length} SIM`,
                 });
                 refreshProfile?.();
-              } catch (debtErr) { console.error('recordDebt topup failed:', debtErr); }
+              } catch (debtErr) {
+                console.error('recordDebt topup failed:', debtErr);
+                alert('⚠ Top-up đã thành công nhưng ghi nợ thất bại.\nLỗi: ' + debtErr.message + '\n\nKiểm tra Firestore Rules và thử lại.');
+              }
             }
           } catch (e) { console.error('Firestore save topup failed:', e); setDeposits(prev => [{ ...newDep, id: Date.now() }, ...prev]); }
         } else {
@@ -487,7 +514,7 @@ const MyDeposit = () => {
 
                 {/* LEFT: Plan selector — using shared PlanSelectorPanel */}
                 <PlanSelectorPanel
-                  plans={topupPlans}
+                  plans={topupPlansVnd}
                   onAdd={addPlanToCart}
                   favs={planFavs}
                   onToggleFav={(id) => setPlanFavs(p => ({ ...p, [id]: !p[id] }))}
@@ -536,7 +563,7 @@ const MyDeposit = () => {
                                     <>
                                       <td rowSpan={row.simNums.length} style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', fontWeight: 'bold', verticalAlign: 'middle' }}>{rowIdx + 1}</td>
                                       <td rowSpan={row.simNums.length} style={{ padding: '7px 10px', border: '1px solid #e8e8e8', verticalAlign: 'middle' }}>{row.plan.productName}</td>
-                                      <td rowSpan={row.simNums.length} style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', verticalAlign: 'middle' }}>NT {row.plan.price}</td>
+                                      <td rowSpan={row.simNums.length} style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', verticalAlign: 'middle' }}>{row.plan.price.toLocaleString('vi-VN')} ₫</td>
                                       <td rowSpan={row.simNums.length} style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', verticalAlign: 'middle' }}>
                                         <input type="number" min="1" max="30" value={row.days}
                                           onChange={e => updateDays(rowIdx, e.target.value)}
@@ -579,7 +606,7 @@ const MyDeposit = () => {
                         )}
                         <tr style={{ background: '#f9f9f9' }}>
                           <td colSpan="2" style={{ padding: '8px 10px', border: '1px solid #e0e0e0', fontWeight: '600' }}>Total</td>
-                          <td style={{ padding: '8px 10px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>NT {totalPrice}</td>
+                          <td style={{ padding: '8px 10px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>{totalPrice.toLocaleString('vi-VN')} ₫</td>
                           <td colSpan="3" style={{ padding: '8px 10px', border: '1px solid #e0e0e0' }}></td>
                         </tr>
                       </tbody>
@@ -592,7 +619,12 @@ const MyDeposit = () => {
                       <select value={company} onChange={e => setCompany(e.target.value)}
                         style={{ width: '100%', padding: '7px 10px', border: `1px solid ${company ? '#ccc' : '#e74c3c'}`, borderRadius: '4px', fontSize: '12px', background: 'white', marginBottom: '12px', color: company ? '#333' : '#999' }}>
                         <option value="">-- Chọn công ty (bắt buộc) --</option>
-                        <option value={ownerName}>{ownerName}</option>
+                        <option value={ownerName}>{ownerName} (Chính tôi)</option>
+                        {managedUsers.map(u => (
+                          <option key={u.uid} value={u.displayName || u.email}>
+                            {u.displayName || u.email}
+                          </option>
+                        ))}
                       </select>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                         <label style={{ fontSize: '12px', color: '#555', paddingTop: '7px', flexShrink: 0, width: '50px' }}>Note</label>
@@ -677,7 +709,7 @@ const MyDeposit = () => {
                         <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
                           <td style={{ padding: '10px' }}>{idx + 1}</td>
                           <td style={{ padding: '10px' }}>{it.productName}</td>
-                          <td style={{ padding: '10px', textAlign: 'right' }}>NT {it.price}</td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>{it.price.toLocaleString('vi-VN')} ₫</td>
                           <td style={{ padding: '10px' }}>{it.day}</td>
                           <td style={{ padding: '10px', fontFamily: 'monospace' }}>{it.sn}</td>
                           <td style={{ padding: '10px', color: it.status === 'Success' ? '#1a9e8e' : '#555' }}>{it.status}</td>
@@ -693,7 +725,7 @@ const MyDeposit = () => {
                           <td colSpan="2"></td>
                           <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>Total</td>
                           <td colSpan="3" style={{ padding: '10px', fontWeight: 'bold' }}>
-                            NT {selectedDeposit.items.reduce((s, it) => s + it.price * it.day, 0)}
+                            {selectedDeposit.items.reduce((s, it) => s + it.price * it.day, 0).toLocaleString('vi-VN')} ₫
                           </td>
                         </tr>
                       </tfoot>
