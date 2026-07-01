@@ -265,7 +265,7 @@ const ReturnOrders = () => {
                       <td className="notice-cell" style={{ padding: '12px 15px', fontWeight: '500', color: 'var(--teal-primary)', fontFamily: 'monospace' }}>{row.refundId}</td>
                       <td className="notice-cell" style={{ padding: '12px 15px', color: 'var(--text-muted)' }}>{row.date}</td>
                       <td className="notice-cell" style={{ padding: '12px 15px', textAlign: 'right', fontWeight: 'bold' }}>
-                        {row.price !== null ? `NT$ ${row.price}` : '-'}
+                        {row.price !== null ? `${row.price.toLocaleString('vi-VN')} ₫` : '-'}
                       </td>
                       <td className="notice-cell" style={{ padding: '12px 15px' }}>{row.branch}</td>
                       <td className="notice-cell" style={{ padding: '12px 15px', textAlign: 'center' }}>

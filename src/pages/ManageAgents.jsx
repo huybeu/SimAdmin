@@ -32,10 +32,9 @@ export default function ManageAgents() {
     setLoading(true); setError('');
     try {
       let rows = [];
-      if (role === 'admin') {
-        const snap = await getDocs(collection(db, 'users'));
-        rows = snap.docs.map(d => d.data());
-      } else if (role === 'tong_kho') {
+      if (role === 'admin' || role === 'tong_kho') {
+        // Admin chỉ thấy con trực tiếp mình tạo (parentId == admin.uid)
+        // Tong_kho chỉ thấy đại lý mình tạo (parentId == tong_kho.uid)
         const snap = await getDocs(query(collection(db, 'users'), where('parentId', '==', user.uid)));
         rows = snap.docs.map(d => d.data());
       }
@@ -149,7 +148,7 @@ export default function ManageAgents() {
               <input style={{ ...inp, width: '110px' }} type="number" min="0" value={form.markupVnd} onChange={e => setForm({ ...form, markupVnd: e.target.value })} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Hạn mức nợ (NT$)</label>
+              <label style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Hạn mức nợ (VND)</label>
               <input style={{ ...inp, width: '120px' }} type="number" min="0" value={form.creditLimit} onChange={e => setForm({ ...form, creditLimit: e.target.value })} placeholder="0 = không giới hạn" />
             </div>
             <button type="submit" className="btn btn-teal" style={{ padding: '8px 20px', fontWeight: 'bold' }} disabled={creating}>
@@ -173,8 +172,8 @@ export default function ManageAgents() {
                   <th style={{ padding: '10px 14px' }}>Tên hiển thị</th>
                   <th style={{ padding: '10px 14px' }}>Vai trò</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Markup (VND)</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Hạn mức nợ (NT$)</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Dư nợ (NT$)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Hạn mức nợ (VND)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Dư nợ (VND)</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Trạng thái</th>
                 </tr>
               </thead>

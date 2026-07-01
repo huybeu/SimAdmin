@@ -7,7 +7,7 @@ import {
 } from '../utils/debtStore';
 import { ROLE_LABEL } from '../lib/roles';
 
-const fmt  = (n) => (Number(n) || 0).toLocaleString();
+const fmt  = (n) => (Number(n) || 0).toLocaleString('vi-VN');
 const ts   = (ms) => ms ? new Date(ms).toLocaleString('vi-VN') : '—';
 const dateLabel = (ms) => {
   if (!ms) return 'Chưa thanh toán';
@@ -59,8 +59,11 @@ export default function DebtManagement() {
   const todayStart = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
   const monthStart = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.getTime(); })();
 
-  const totalReceivable = users.reduce((s, u) => s + (u.totalDebt || 0), 0);
-  const overLimit       = users.filter(u => u.creditLimit > 0 && (u.totalDebt || 0) >= u.creditLimit).length;
+  // aggregatedDebt: dùng cho tổng kho (bao gồm debt của đại lý cấp dưới), fallback về totalDebt
+  const getDebt = (u) => u.aggregatedDebt ?? u.totalDebt ?? 0;
+
+  const totalReceivable = users.reduce((s, u) => s + getDebt(u), 0);
+  const overLimit       = users.filter(u => u.creditLimit > 0 && getDebt(u) >= u.creditLimit).length;
 
   const todayCollected = txs
     .filter(t => t.type === 'decrease' && t.createdAt >= todayStart)
@@ -80,15 +83,15 @@ export default function DebtManagement() {
     if (!lastPayMap[t.uid] || t.createdAt > lastPayMap[t.uid]) lastPayMap[t.uid] = t.createdAt;
   });
 
-  // Danh sách phải thu hằng ngày: user có nợ, sort theo nợ giảm dần
+  // Danh sách phải thu hằng ngày: user có nợ, sort theo nợ (aggregated) giảm dần
   const dailyReceivable = users
-    .filter(u => (u.totalDebt || 0) > 0)
+    .filter(u => getDebt(u) > 0)
     .map(u => ({
       ...u,
       lastPay: lastPayMap[u.uid] || null,
       daysSincePayment: lastPayMap[u.uid] ? Math.floor((now - lastPayMap[u.uid]) / 86400000) : null,
     }))
-    .sort((a, b) => (b.totalDebt || 0) - (a.totalDebt || 0));
+    .sort((a, b) => getDebt(b) - getDebt(a));
 
   const handleSetLimit = async (u, val) => {
     try { await setCreditLimit(u.uid, val); await load(); }
@@ -113,7 +116,10 @@ export default function DebtManagement() {
   };
 
   const inp = { padding: '7px 10px', border: '1px solid var(--border-color)', borderRadius: '5px', background: 'var(--input-bg,#11171e)', color: 'var(--text-main)', fontSize: '13px' };
-  const userTxs = histUser ? txs.filter(t => t.uid === histUser.uid) : txs;
+  // Khi xem sổ cái của tổng kho: bao gồm cả giao dịch của đại lý cấp dưới
+  const userTxs = histUser
+    ? txs.filter(t => t.uid === histUser.uid || (histUser.role === 'tong_kho' && t.parentId === histUser.uid))
+    : txs;
 
   return (
     <div className="page-wrapper">
@@ -128,10 +134,10 @@ export default function DebtManagement() {
       {/* ── Thẻ tổng hợp ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '14px', marginBottom: '20px' }}>
         {[
-          { label: 'Tổng phải thu', value: `NT$ ${fmt(totalReceivable)}`, color: '#e74c3c',        icon: <TrendingUp  size={18} /> },
-          { label: 'Đã thu hôm nay', value: `NT$ ${fmt(todayCollected)}`, color: '#4caf50',        icon: <CheckCircle size={18} /> },
-          { label: 'Đã thu tháng này', value: `NT$ ${fmt(monthCollected)}`, color: 'var(--teal-primary)', icon: <CheckCircle size={18} /> },
-          { label: 'Phát sinh hôm nay', value: `NT$ ${fmt(todayNewDebt)}`, color: '#e67e22',       icon: <TrendingDown size={18} /> },
+          { label: 'Tổng phải thu', value: `${fmt(totalReceivable)} ₫`, color: '#e74c3c',        icon: <TrendingUp  size={18} /> },
+          { label: 'Đã thu hôm nay', value: `${fmt(todayCollected)} ₫`, color: '#4caf50',        icon: <CheckCircle size={18} /> },
+          { label: 'Đã thu tháng này', value: `${fmt(monthCollected)} ₫`, color: 'var(--teal-primary)', icon: <CheckCircle size={18} /> },
+          { label: 'Phát sinh hôm nay', value: `${fmt(todayNewDebt)} ₫`, color: '#e67e22',       icon: <TrendingDown size={18} /> },
           { label: 'Khách đang nợ', value: `${dailyReceivable.length} người`, color: 'var(--teal-primary)', icon: <DollarSign size={18} /> },
           { label: 'Vượt hạn mức', value: `${overLimit} người`, color: overLimit > 0 ? '#e74c3c' : 'var(--text-muted)', icon: <Bell size={18} /> },
         ].map(c => (
@@ -167,8 +173,8 @@ export default function DebtManagement() {
               <thead>
                 <tr>
                   <th style={{ padding: '10px 14px' }}>Khách hàng</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Phải thu (NT$)</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Hạn mức (NT$)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Phải thu (VND)</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Hạn mức (VND)</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Lần trả cuối</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Mức độ</th>
                   <th style={{ padding: '10px 14px', textAlign: 'center' }}>Thao tác</th>
@@ -176,7 +182,7 @@ export default function DebtManagement() {
               </thead>
               <tbody>
                 {dailyReceivable.map(u => {
-                  const debt  = u.totalDebt || 0;
+                  const debt  = getDebt(u);
                   const limit = u.creditLimit || 0;
                   const over  = limit > 0 && debt >= limit;
                   const days  = u.daysSincePayment;
@@ -249,8 +255,8 @@ export default function DebtManagement() {
                   <tr>
                     <th style={{ padding: '10px 12px' }}>Tên / Email</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center' }}>Vai trò</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hạn mức (NT$)</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Phải thu (NT$)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hạn mức (VND)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Phải thu (VND)</th>
                     <th style={{ padding: '10px 12px', textAlign: 'right' }}>Đã thu tháng</th>
                     <th style={{ padding: '10px 12px', textAlign: 'right' }}>Còn được nợ</th>
                     <th style={{ padding: '10px 12px', textAlign: 'center' }}>Trạng thái</th>
@@ -262,7 +268,7 @@ export default function DebtManagement() {
                     <tr><td colSpan={8} className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>Chưa có dữ liệu công nợ.</td></tr>
                   )}
                   {users.map(u => {
-                    const debt      = u.totalDebt   || 0;
+                    const debt      = getDebt(u);
                     const limit     = u.creditLimit || 0;
                     const available = limit > 0 ? limit - debt : null;
                     const over      = limit > 0 && debt >= limit;
@@ -274,6 +280,11 @@ export default function DebtManagement() {
                         <td className="notice-cell" style={{ padding: '10px 12px' }}>
                           <div style={{ fontWeight: 600, fontSize: '13px' }}>{u.displayName}</div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{u.email}</div>
+                          {u.role === 'tong_kho' && u.subCount > 0 && (
+                            <div style={{ fontSize: '10px', color: 'var(--teal-primary)', marginTop: '2px' }}>
+                              gồm {u.subCount} đại lý cấp dưới
+                            </div>
+                          )}
                         </td>
                         <td className="notice-cell" style={{ padding: '10px 12px', textAlign: 'center' }}>
                           <span style={{ padding: '2px 7px', borderRadius: '4px', fontSize: '11px', fontWeight: 700,
@@ -343,8 +354,8 @@ export default function DebtManagement() {
                   <th style={{ padding: '10px 12px' }}>Thời gian</th>
                   <th style={{ padding: '10px 12px' }}>Khách hàng</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center' }}>Loại</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Số tiền (NT$)</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Dư nợ sau (NT$)</th>
+                   <th style={{ padding: '10px 12px', textAlign: 'right' }}>Số tiền (VND)</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Dư nợ sau (VND)</th>
                   <th style={{ padding: '10px 12px' }}>Ghi chú</th>
                 </tr>
               </thead>
@@ -386,19 +397,19 @@ export default function DebtManagement() {
           <div style={{ background: 'var(--card-bg,#161b22)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '24px', width: '400px', maxWidth: '95vw' }}>
             <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '6px' }}>Thu nợ — {payModal.displayName}</div>
             <div style={{ fontSize: '13px', marginBottom: '14px', color: 'var(--text-muted)', display: 'flex', gap: '20px' }}>
-              <span>Phải thu: <strong style={{ color: '#e74c3c' }}>NT$ {fmt(payModal.totalDebt)}</strong></span>
-              {payModal.creditLimit > 0 && <span>Hạn mức: <strong style={{ color: 'var(--teal-primary)' }}>NT$ {fmt(payModal.creditLimit)}</strong></span>}
+              <span>Phải thu: <strong style={{ color: '#e74c3c' }}>{fmt(payModal.totalDebt)} ₫</strong></span>
+              {payModal.creditLimit > 0 && <span>Hạn mức: <strong style={{ color: 'var(--teal-primary)' }}>{fmt(payModal.creditLimit)} ₫</strong></span>}
             </div>
             {/* Nút thu đủ */}
             {payModal.totalDebt > 0 && (
               <button style={{ width: '100%', marginBottom: '12px', padding: '8px', border: '1px dashed var(--teal-primary)', borderRadius: '6px', background: 'rgba(88,217,200,0.06)', color: 'var(--teal-primary)', cursor: 'pointer', fontSize: '13px' }}
                 onClick={() => setPayAmount(String(payModal.totalDebt))}>
-                Thu đủ toàn bộ (NT$ {fmt(payModal.totalDebt)})
+                Thu đủ toàn bộ ({fmt(payModal.totalDebt)} ₫)
               </button>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Số tiền thu (NT$) *</label>
+                <label style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Số tiền thu (VND) *</label>
                 <input type="number" min="1" value={payAmount} onChange={e => setPayAmount(e.target.value)}
                   style={{ ...inp, width: '100%' }} placeholder="Nhập số tiền..." />
               </div>

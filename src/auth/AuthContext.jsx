@@ -23,6 +23,8 @@ async function loadOrCreateProfile(u) {
     displayName: u.displayName || u.email || '',
     parentId: null,
     markupVnd: 0,
+    creditLimit: 0,
+    totalDebt: 0,
     active: true,
     createdAt: Date.now(),
   };

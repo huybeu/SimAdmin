@@ -110,3 +110,20 @@ export async function saveConfig(name, data) {
     try { localStorage.setItem(`config_${name}`, JSON.stringify(data)); } catch { /* ignore */ }
   }
 }
+
+export function getVndPrice(importPrice, typeStr, config) {
+  const cfg = config || { conversionRate: 1000, esimMarkup: 30000, physicalMarkup: 5000 };
+  const rate = Number(cfg.conversionRate) ?? 1000;
+  const esimMarkup = Number(cfg.esimMarkup) ?? 30000;
+  const physicalMarkup = Number(cfg.physicalMarkup) ?? 5000;
+
+  if (!importPrice) return 0;
+  const isEsim = typeStr === 0 || 
+                 typeStr === 'eSIM' || 
+                 (typeof typeStr === 'string' && typeStr.toLowerCase().includes('esim'));
+
+  if (isEsim) {
+    return importPrice * rate + esimMarkup;
+  }
+  return importPrice * rate + physicalMarkup;
+}

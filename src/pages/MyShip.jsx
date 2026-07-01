@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { createEsimOrder, createSimOrder, topupSim, searchMyQuotations, getApiConfig } from '../utils/api';
 import { useAuth } from '../auth/AuthContext';
-import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll } from '../utils/dataStore';
-import { recordDebt } from '../utils/debtStore';
+import { fetchRecords, fetchRecordsForRole, fetchConfig, addRecord, lsSaveAll, getVndPrice } from '../utils/dataStore';
+import { recordDebt, fetchDebtUsers } from '../utils/debtStore';
 import { firebaseEnabled } from '../firebase';
 
 // Fallback nếu chưa có profile
@@ -121,18 +121,34 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const [orders,           setOrders]           = useState([]);
   const [ordersLoaded,     setOrdersLoaded]     = useState(false);
   const [perPage,          setPerPage]          = useState(10);
+  const [managedUsers,     setManagedUsers]     = useState([]);
+
+  useEffect(() => {
+    if (firebaseEnabled && uid && role && (role === 'admin' || role === 'tong_kho')) {
+      fetchDebtUsers(uid, role)
+        .then(usersList => {
+          setManagedUsers(usersList || []);
+        })
+        .catch(err => console.error("fetchDebtUsers failed:", err));
+    }
+  }, [uid, role]);
 
   // ── Kiểm tra cấu hình giá (admin phải lưu trước) ──────────────────────
   const [configReady,   setConfigReady]   = useState(role === 'admin');
   const [configChecked, setConfigChecked] = useState(role === 'admin');
+  const [pricingConfig, setPricingConfig] = useState(null);
 
   useEffect(() => {
-    if (role === 'admin') { setConfigReady(true); setConfigChecked(true); return; }
-    if (!firebaseEnabled || !role) return;
     fetchConfig('pricing')
-      .then(cfg => setConfigReady(!!cfg))
-      .catch(() => setConfigReady(false))
-      .finally(() => setConfigChecked(true));
+      .then(cfg => {
+        if (cfg) setPricingConfig(cfg);
+        if (role === 'admin') { setConfigReady(true); setConfigChecked(true); }
+        else { setConfigReady(!!cfg); setConfigChecked(true); }
+      })
+      .catch(() => {
+        if (role === 'admin') { setConfigReady(true); setConfigChecked(true); }
+        else { setConfigReady(false); setConfigChecked(true); }
+      });
   }, [role]);
 
   // Load đơn theo vai trò: admin → tất cả, tong_kho → mình + con, dai_ly → mình.
@@ -160,20 +176,27 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
     const enriched = { ...row, ownerName: accountName };
     if (firebaseEnabled && uid) {
       try {
-        const saved = await addRecord('orders', uid, enriched, profile?.parentId || null);
+        const targetUser = managedUsers.find(u => (u.displayName || u.email) === row.company);
+        const targetUid = targetUser ? targetUser.uid : uid;
+        const targetParentId = targetUser ? targetUser.parentId : (profile?.parentId || null);
+
+        const saved = await addRecord('orders', targetUid, enriched, targetParentId);
         setOrders(p => [saved, ...p]);
         // Ghi nợ tự động sau khi lưu đơn thành công
         const orderAmount = (row.items || []).reduce((s, i) => s + (i.amount || 0), 0);
         if (orderAmount > 0) {
           try {
-            await recordDebt(uid, {
+            await recordDebt(targetUid, {
               orderId: saved.id,
               amount: orderAmount,
-              parentId: profile?.parentId || null,
+              parentId: targetParentId,
               note: `Đơn ${row.orderId} — ${row.type}`,
             });
             refreshProfile?.();
-          } catch (debtErr) { console.error('recordDebt failed:', debtErr); }
+          } catch (debtErr) {
+              console.error('recordDebt failed:', debtErr);
+              alert('⚠ Đơn đã đặt thành công nhưng ghi nợ thất bại.\nLỗi: ' + debtErr.message + '\n\nKiểm tra Firestore Rules và thử lại.');
+            }
         }
         return;
       } catch (e) { console.error('Firestore save order failed:', e); }
@@ -211,6 +234,18 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
   const [esimPlans,  setEsimPlans]  = useState(ESIM_PLANS);
   const [simPlans,   setSimPlans]   = useState(SIM_PLANS);
   const [topupPlans, setTopupPlans] = useState(TOPUP_PLANS);
+
+  const esimPlansVnd = React.useMemo(() => {
+    return esimPlans.map(p => ({ ...p, price: getVndPrice(p.price, 'eSIM', pricingConfig) }));
+  }, [esimPlans, pricingConfig]);
+
+  const simPlansVnd = React.useMemo(() => {
+    return simPlans.map(p => ({ ...p, price: getVndPrice(p.price, 'SIM', pricingConfig) }));
+  }, [simPlans, pricingConfig]);
+
+  const topupPlansVnd = React.useMemo(() => {
+    return topupPlans.map(p => ({ ...p, price: getVndPrice(p.price, 'SIM Top-up', pricingConfig) }));
+  }, [topupPlans, pricingConfig]);
 
   useEffect(() => {
     let cancelled = false;
@@ -346,7 +381,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
       setSubmitting(true);
       try {
         const prodList = cart.map(c => ({ wmproductId: c.plan.wmproductId, qty: c.qty }));
-        const res = await createEsimOrder(email, prodList, false);
+        const res = await createEsimOrder(email, prodList, true);
         if (res.code === 0 && res.orderId) {
           await saveOrderRow({
             orderId: res.orderId, ecomOrder: ecomOrder || email,
@@ -543,7 +578,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
 
               {/* LEFT — plan selector */}
               <PlanSelectorPanel
-                plans={tab === 'esim' ? esimPlans : tab === 'sim' ? simPlans : topupPlans}
+                plans={tab === 'esim' ? esimPlansVnd : tab === 'sim' ? simPlansVnd : topupPlansVnd}
                 onAdd={tab === 'topup' ? addTopupPlan : addToCart}
                 favs={favs}
                 onToggleFav={toggleFav}
@@ -578,7 +613,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                         : topupCart.map(line => (
                             <tr key={line.plan.wmproductId} style={{ borderBottom: '1px solid #f0f0f0' }}>
                               <td style={{ padding: '7px 10px', border: '1px solid #e8e8e8', fontSize: '12px' }}>{line.plan.productName}</td>
-                              <td style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>NT {line.plan.price}</td>
+                              <td style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>{line.plan.price.toLocaleString('vi-VN')} ₫</td>
                               <td style={{ padding: '5px 8px', border: '1px solid #e8e8e8', textAlign: 'center' }}>
                                 <select value={line.day} onChange={e => updateTopupDay(line.plan.wmproductId, e.target.value)}
                                   style={{ width: '56px', textAlign: 'center', border: '1px solid #ccc', borderRadius: '3px', padding: '3px', fontSize: '12px', background: 'white' }}>
@@ -590,7 +625,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                                   placeholder="20-digit SIM number"
                                   style={{ width: '100%', padding: '4px 6px', border: '1px solid #ccc', borderRadius: '3px', fontSize: '11px', boxSizing: 'border-box' }} />
                               </td>
-                              <td style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>NT {line.plan.price * line.day}</td>
+                              <td style={{ padding: '7px 10px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>{(line.plan.price * line.day).toLocaleString('vi-VN')} ₫</td>
                               <td style={{ padding: '5px', border: '1px solid #e8e8e8', textAlign: 'center' }}>
                                 <button onClick={() => removeTopupLine(line.plan.wmproductId)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c' }}><X size={13} /></button>
                               </td>
@@ -599,7 +634,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                       }
                       <tr style={{ background: '#f9f9f9' }}>
                         <td colSpan="4" style={{ padding: '8px 10px', border: '1px solid #e0e0e0', fontWeight: '600' }}>Total line: {topupCart.length}</td>
-                        <td style={{ padding: '8px 10px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>NT {topupTotalAmount}</td>
+                        <td style={{ padding: '8px 10px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>{topupTotalAmount.toLocaleString('vi-VN')} ₫</td>
                         <td style={{ border: '1px solid #e0e0e0' }}></td>
                       </tr>
                     </tbody>
@@ -613,7 +648,12 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                       <select value={topupCompany} onChange={e => setTopupCompany(e.target.value)}
                         style={{ flex: 1, padding: '6px 10px', border: `1px solid ${topupCompany ? '#ccc' : '#e74c3c'}`, borderRadius: '4px', fontSize: '12px', background: 'white', color: topupCompany ? '#333' : '#999' }}>
                         <option value="">-- Chọn công ty (bắt buộc) --</option>
-                        <option value={accountName}>{accountName}</option>
+                        <option value={accountName}>{accountName} (Chính tôi)</option>
+                        {managedUsers.map(u => (
+                          <option key={u.uid} value={u.displayName || u.email}>
+                            {u.displayName || u.email}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
@@ -668,13 +708,13 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                             return (
                               <tr key={id}>
                                 <td style={{ padding: '7px 12px', border: '1px solid #e8e8e8', fontSize: '12px' }}>{c.plan.productName}</td>
-                                <td style={{ padding: '7px 12px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>NT {c.plan.price}</td>
+                                <td style={{ padding: '7px 12px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>{c.plan.price.toLocaleString('vi-VN')} ₫</td>
                                 <td style={{ padding: '7px 12px', border: '1px solid #e8e8e8', textAlign: 'center' }}>
                                   <input type="number" min="1" value={c.qty}
                                     onChange={e => updateQty(id, parseInt(e.target.value)||0)}
                                     style={{ width: '55px', textAlign: 'center', border: '1px solid #ccc', borderRadius: '3px', padding: '2px', fontSize: '12px' }} />
                                 </td>
-                                <td style={{ padding: '7px 12px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>NT {c.plan.price * c.qty}</td>
+                                <td style={{ padding: '7px 12px', border: '1px solid #e8e8e8', textAlign: 'center', fontSize: '12px' }}>{(c.plan.price * c.qty).toLocaleString('vi-VN')} ₫</td>
                                 <td style={{ padding: '7px 8px', border: '1px solid #e8e8e8', textAlign: 'center' }}>
                                   <button onClick={() => updateQty(id, 0)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c' }}><X size={13} /></button>
                                 </td>
@@ -684,9 +724,9 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                       }
                       <tr style={{ background: '#f9f9f9' }}>
                         <td style={{ padding: '8px 12px', border: '1px solid #e0e0e0', fontWeight: '600' }}>Total</td>
-                        <td style={{ padding: '8px 12px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>NT {totalPrice}</td>
+                        <td style={{ padding: '8px 12px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>{totalPrice.toLocaleString('vi-VN')} ₫</td>
                         <td style={{ padding: '8px 12px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>{totalQty}</td>
-                        <td style={{ padding: '8px 12px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>NT {totalPrice}</td>
+                        <td style={{ padding: '8px 12px', border: '1px solid #e0e0e0', textAlign: 'center', fontWeight: '600' }}>{totalPrice.toLocaleString('vi-VN')} ₫</td>
                         <td style={{ border: '1px solid #e0e0e0' }}></td>
                       </tr>
                     </tbody>
@@ -699,7 +739,12 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                     <select value={company} onChange={e => setCompany(e.target.value)}
                       style={{ width: '100%', padding: '7px 10px', border: `1px solid ${company ? '#ccc' : '#e74c3c'}`, borderRadius: '4px', fontSize: '12px', background: 'white', marginBottom: '12px', color: company ? '#333' : '#999' }}>
                       <option value="">-- Chọn công ty (bắt buộc) --</option>
-                      <option value={accountName}>{accountName}</option>
+                      <option value={accountName}>{accountName} (Chính tôi)</option>
+                      {managedUsers.map(u => (
+                        <option key={u.uid} value={u.displayName || u.email}>
+                          {u.displayName || u.email}
+                        </option>
+                      ))}
                     </select>
 
                     {/* eSIM fields */}
@@ -847,7 +892,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                         <tr key={idx} style={{ borderBottom: '1px solid #f0f0f0' }}>
                           <td style={{ padding: '10px' }}>{idx + 1}</td>
                           <td style={{ padding: '10px' }}>{it.productName}</td>
-                          <td style={{ padding: '10px', textAlign: 'right' }}>NT {it.price}</td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>{it.price.toLocaleString('vi-VN')} ₫</td>
                           {isTopup ? (
                             <>
                               <td style={{ padding: '10px' }}>{it.day}</td>
@@ -856,7 +901,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                           ) : (
                             <td style={{ padding: '10px', textAlign: 'center' }}>{it.qty}</td>
                           )}
-                          <td style={{ padding: '10px', textAlign: 'right' }}>NT {it.amount}</td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>{it.amount.toLocaleString('vi-VN')} ₫</td>
                         </tr>
                       ))}
                       {items.length === 0 && (
@@ -867,7 +912,7 @@ export default function MyShip({ autoOpenAdd = false } = {}) {
                       <tfoot>
                         <tr style={{ borderTop: '1px solid #e0e0e0' }}>
                           <td colSpan={isTopup ? 5 : 4} style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>Total</td>
-                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>NT {total}</td>
+                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>{total.toLocaleString('vi-VN')} ₫</td>
                         </tr>
                       </tfoot>
                     )}
