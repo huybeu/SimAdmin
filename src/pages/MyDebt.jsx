@@ -44,9 +44,9 @@ export default function MyDebt() {
       {/* Thông tin công nợ */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {[
-          { label: 'Dư nợ hiện tại', value: `NT$ ${fmt(totalDebt)}`, color: totalDebt > 0 ? '#e74c3c' : '#4caf50' },
-          { label: 'Hạn mức tín dụng', value: creditLimit > 0 ? `NT$ ${fmt(creditLimit)}` : 'Không giới hạn', color: 'var(--teal-primary)' },
-          { label: 'Còn được nợ', value: available === null ? '∞' : `NT$ ${fmt(available)}`, color: over ? '#e74c3c' : '#4caf50' },
+          { label: 'Dư nợ hiện tại', value: `${fmt(totalDebt)} ₫`, color: totalDebt > 0 ? '#e74c3c' : '#4caf50' },
+          { label: 'Hạn mức tín dụng', value: creditLimit > 0 ? `${fmt(creditLimit)} ₫` : 'Không giới hạn', color: 'var(--teal-primary)' },
+          { label: 'Còn được nợ', value: available === null ? '∞' : `${fmt(available)} ₫`, color: over ? '#e74c3c' : '#4caf50' },
         ].map(c => (
           <div key={c.label} style={{ flex: '1 1 160px', background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px 18px' }}>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{c.label}</div>
@@ -82,8 +82,8 @@ export default function MyDebt() {
                 <tr>
                   <th style={{ padding: '10px 12px' }}>Thời gian</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center' }}>Loại</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Số tiền (NT$)</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Dư nợ sau (NT$)</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Số tiền (VND)</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Dư nợ sau (VND)</th>
                   <th style={{ padding: '10px 12px' }}>Ghi chú</th>
                 </tr>
               </thead>

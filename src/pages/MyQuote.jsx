@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Trash2, Download, Upload, Star, FileText } from 'lucide-react';
 import { searchMyQuotations } from '../utils/api';
+import { fetchConfig, getVndPrice } from '../utils/dataStore';
 
 const MyQuote = () => {
   const [productName, setProductName] = useState('');
@@ -17,24 +18,32 @@ const MyQuote = () => {
   });
 
   const [quotes, setQuotes] = useState([]);
+  const [pricingConfig, setPricingConfig] = useState(null);
 
   useEffect(() => {
     const fetchQuotes = async () => {
       setLoading(true);
       try {
-        const res = await searchMyQuotations();
+        const [res, cfg] = await Promise.all([
+          searchMyQuotations(),
+          fetchConfig('pricing')
+        ]);
+        if (cfg) setPricingConfig(cfg);
         if (res.code === 0 && res.prodList) {
-          const mapped = res.prodList.map((item, idx) => ({
-            id: idx + 1,
-            vendor: 'SimDuLich.VN',
-            name: item.productNamelang || item.productName,
-            area: item.productRegion,
-            type: item.productType === 0 ? 'eSIM' : item.productType === 1 ? 'SIM vật lý' : 'Top-Up SIM',
-            price: item.productPrice,
-            cPrice: item.productcPrice,
-            showC: item.csight === 1 ? 'Y' : 'N',
-            isFav: false
-          }));
+          const mapped = res.prodList.map((item, idx) => {
+            const rawType = item.productType === 0 ? 'eSIM' : item.productType === 1 ? 'SIM vật lý' : 'Top-Up SIM';
+            return {
+              id: idx + 1,
+              vendor: 'SimDuLich.VN',
+              name: item.productNamelang || item.productName,
+              area: item.productRegion,
+              type: rawType,
+              price: getVndPrice(item.productPrice, item.productType, cfg),
+              cPrice: getVndPrice(item.productcPrice, item.productType, cfg),
+              showC: item.csight === 1 ? 'Y' : 'N',
+              isFav: false
+            };
+          });
           setQuotes(mapped);
         }
       } catch (err) {
@@ -221,10 +230,10 @@ const MyQuote = () => {
                         {row.type}
                       </td>
                       <td className="notice-cell" style={{ padding: '12px 15px', textAlign: 'right', fontWeight: 'bold', color: 'var(--text-main)' }}>
-                        NT$ {row.price}
+                        {row.price.toLocaleString('vi-VN')} ₫
                       </td>
                       <td className="notice-cell" style={{ padding: '12px 15px', textAlign: 'right', color: row.cPrice > 0 ? 'var(--red-primary)' : 'var(--text-muted)' }}>
-                        {row.cPrice > 0 ? `NT$ ${row.cPrice}` : '-'}
+                        {row.cPrice > 0 ? `${row.cPrice.toLocaleString('vi-VN')} ₫` : '-'}
                       </td>
                       <td className="notice-cell" style={{ padding: '12px 15px', textAlign: 'center' }}>
                         <span style={{ 

@@ -35,7 +35,7 @@ const ImportantNotice = () => {
               Xin lưu ý rằng đơn giá cho phôi thẻ vật lý sẽ được điều chỉnh do chi phí sản xuất và logistics tăng cao:
             </p>
             <div style={{ backgroundColor: 'rgba(240, 173, 78, 0.1)', border: '1px solid rgba(240, 173, 78, 0.3)', padding: '12px 15px', borderRadius: '8px', color: 'var(--orange-primary)', fontSize: '13px' }}>
-              <strong>Giá mới:</strong> NT$ 14 mỗi phôi thẻ vật lý (thân thẻ).
+              <strong>Giá mới:</strong> Xem bảng giá VND hiện hành trong mục Cấu hình giá.
             </div>
           </div>
 

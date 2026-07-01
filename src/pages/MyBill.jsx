@@ -95,7 +95,7 @@ const MyBill = () => {
       <div style={{ display: 'flex', gap: '20px', marginBottom: '25px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 200px', background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '15px 20px', boxShadow: 'var(--shadow-premium)' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase' }}>Tổng giá trị</div>
-          <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--teal-primary)', marginTop: '5px' }}>NT$ {totalPaid.toLocaleString()}</div>
+          <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--teal-primary)', marginTop: '5px' }}>{totalPaid.toLocaleString('vi-VN')} ₫</div>
         </div>
         <div style={{ flex: '1 1 200px', background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '15px 20px', boxShadow: 'var(--shadow-premium)' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500', textTransform: 'uppercase' }}>Số hóa đơn</div>
@@ -167,7 +167,7 @@ const MyBill = () => {
                   <tr>
                     <th style={{ padding: '12px 15px' }}>Mã đơn hàng</th>
                     <th style={{ padding: '12px 15px' }}>Ngày tạo</th>
-                    <th style={{ padding: '12px 15px', textAlign: 'right' }}>Tổng giá (NT$)</th>
+                    <th style={{ padding: '12px 15px', textAlign: 'right' }}>Tổng giá (VND)</th>
                     <th style={{ padding: '12px 15px', textAlign: 'center' }}>Loại</th>
                     <th style={{ padding: '12px 15px', textAlign: 'center' }}>SL</th>
                     {showOwner && <th style={{ padding: '12px 15px' }}>Tài khoản</th>}
