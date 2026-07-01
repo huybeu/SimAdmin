@@ -8,6 +8,8 @@ const insecureAgent = new Agent({ rejectUnauthorized: false })
 export default defineConfig({
   plugins: [react()],
   server: {
+    port: process.env.PORT ? Number(process.env.PORT) : 5173,
+    strictPort: false,
     proxy: {
       // TEST environment → tfmshippingsys.fastmove.com.tw
       '/api-test': {

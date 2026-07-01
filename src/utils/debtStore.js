@@ -78,6 +78,14 @@ export async function setCreditLimit(uid, limitAmount) {
   await updateDoc(doc(db, 'users', uid), { creditLimit: Number(limitAmount) || 0 });
 }
 
+// ── Đánh dấu 1 đơn (khách hàng do admin tự bán, không phải user hệ thống) đã thu tiền ──
+export async function markOrderAsPaid(orderId, amount) {
+  if (!firebaseEnabled) return;
+  await updateDoc(doc(db, 'orders', orderId), {
+    paidAmount: amount, paymentStatus: 'paid', paidAt: Date.now(),
+  });
+}
+
 // ── Lấy danh sách users với thông tin công nợ (theo hierarchy) ─────────────
 // Admin: chỉ thấy con trực tiếp (parentId==uid). Tổng kho được gộp debt của tất cả đại lý cấp dưới.
 // Tong_kho: chỉ thấy đại lý do mình tạo.

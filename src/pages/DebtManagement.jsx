@@ -3,8 +3,9 @@ import { DollarSign, X, RefreshCw, Bell, TrendingDown, TrendingUp, CheckCircle }
 import { useAuth } from '../auth/AuthContext';
 import {
   fetchDebtUsers, fetchDebtTransactions,
-  recordPayment, setCreditLimit,
+  recordPayment, setCreditLimit, markOrderAsPaid,
 } from '../utils/debtStore';
+import { fetchRecords } from '../utils/dataStore';
 import { ROLE_LABEL } from '../lib/roles';
 
 const fmt  = (n) => (Number(n) || 0).toLocaleString('vi-VN');
@@ -23,6 +24,7 @@ export default function DebtManagement() {
 
   const [users,   setUsers]   = useState([]);
   const [txs,     setTxs]     = useState([]);
+  const [adminOrders, setAdminOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
 
@@ -37,17 +39,19 @@ export default function DebtManagement() {
   const [histUser, setHistUser] = useState(null);
 
   // Tab chính
-  const [tab, setTab] = useState('overview'); // 'overview' | 'ledger'
+  const [tab, setTab] = useState('overview'); // 'overview' | 'ledger' | 'admin'
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [u, t] = await Promise.all([
+      const [u, t, ao] = await Promise.all([
         fetchDebtUsers(uid, role),
         fetchDebtTransactions(uid, role),
+        role === 'admin' ? fetchRecords('orders', uid) : Promise.resolve([]),
       ]);
       setUsers(u);
       setTxs(t);
+      setAdminOrders(ao || []);
     } catch (e) { setError(e.message || 'Lỗi tải dữ liệu'); }
     finally { setLoading(false); }
   }, [uid, role]);
@@ -92,6 +96,38 @@ export default function DebtManagement() {
       daysSincePayment: lastPayMap[u.uid] ? Math.floor((now - lastPayMap[u.uid]) / 86400000) : null,
     }))
     .sort((a, b) => getDebt(b) - getDebt(a));
+
+  // Công nợ khách hàng do admin tự tạo đơn (bán trực tiếp, không qua đại lý) —
+  // gom theo ngày + tên khách (field "E-commerce Order" ghi khi tạo đơn).
+  const adminDailyDebt = (() => {
+    const map = new Map();
+    adminOrders.forEach(o => {
+      const day      = (o.date || '').slice(0, 10) || 'Không rõ ngày';
+      const customer = (o.ecomOrder || '').trim() || 'Không rõ';
+      const amount   = (o.items || []).reduce((s, i) => s + (i.amount || 0), 0);
+      const key      = `${day}|${customer}`;
+      if (!map.has(key)) map.set(key, { day, customer, qty: 0, amount: 0, paidAmount: 0, allPaid: true, orders: [] });
+      const g = map.get(key);
+      g.qty        += o.quantity || 0;
+      g.amount      += amount;
+      g.paidAmount += (o.paidAmount || 0);
+      if (o.paymentStatus !== 'paid') g.allPaid = false;
+      g.orders.push(o);
+    });
+    return [...map.values()].sort((a, b) => b.day.localeCompare(a.day) || b.amount - a.amount);
+  })();
+
+  const adminUnpaidTotal = adminDailyDebt.filter(g => !g.allPaid).reduce((s, g) => s + (g.amount - g.paidAmount), 0);
+
+  const handleMarkAdminGroupPaid = async (g) => {
+    try {
+      await Promise.all(g.orders.map(o => {
+        const amt = (o.items || []).reduce((s, i) => s + (i.amount || 0), 0);
+        return markOrderAsPaid(o.id, amt);
+      }));
+      await load();
+    } catch (e) { alert('Lỗi: ' + e.message); }
+  };
 
   const handleSetLimit = async (u, val) => {
     try { await setCreditLimit(u.uid, val); await load(); }
@@ -235,6 +271,7 @@ export default function DebtManagement() {
         {[
           { key: 'overview', label: 'Danh sách công nợ' },
           { key: 'ledger',   label: 'Sổ cái giao dịch'  },
+          ...(role === 'admin' ? [{ key: 'admin', label: 'Công nợ khách trực tiếp' }] : []),
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             padding: '7px 18px', border: '1px solid var(--border-color)', borderRadius: '7px 7px 0 0',
@@ -387,6 +424,70 @@ export default function DebtManagement() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Công nợ của tôi (khách hàng admin tự bán, gom theo ngày) ── */}
+      {tab === 'admin' && (
+        <div className="card">
+          <div className="card-header card-header-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>Công nợ khách hàng do tôi tạo đơn — gom theo ngày &amp; tên khách (E-commerce Order)</span>
+            <span style={{ marginLeft: 'auto', fontSize: '13px', fontWeight: 700, color: '#e74c3c' }}>
+              Chưa thu: {fmt(adminUnpaidTotal)} ₫
+            </span>
+          </div>
+          <div className="card-body" style={{ overflowX: 'auto' }}>
+            {loading ? <p style={{ color: 'var(--text-muted)' }}>Đang tải…</p> : (
+              <table className="notices-table" style={{ minWidth: '760px' }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: '10px 12px' }}>Ngày</th>
+                    <th style={{ padding: '10px 12px' }}>Khách hàng</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>SL</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Tổng tiền (VND)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Đã thu (VND)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>Trạng thái</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminDailyDebt.length === 0 && (
+                    <tr><td colSpan={7} className="notice-cell" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
+                      Chưa có đơn nào bạn tự tạo (đơn có Công ty = tài khoản của bạn).
+                    </td></tr>
+                  )}
+                  {adminDailyDebt.map(g => (
+                    <tr key={`${g.day}|${g.customer}`} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td className="notice-cell" style={{ padding: '10px 12px', fontSize: '12px', color: 'var(--text-muted)' }}>{g.day}</td>
+                      <td className="notice-cell" style={{ padding: '10px 12px', fontWeight: 600, fontSize: '13px' }}>{g.customer}</td>
+                      <td className="notice-cell" style={{ padding: '10px 12px', textAlign: 'center' }}>{g.qty}</td>
+                      <td className="notice-cell" style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: g.allPaid ? 'var(--text-muted)' : '#e74c3c' }}>
+                        {fmt(g.amount)}
+                      </td>
+                      <td className="notice-cell" style={{ padding: '10px 12px', textAlign: 'right', color: '#4caf50' }}>
+                        {g.paidAmount > 0 ? fmt(g.paidAmount) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                      <td className="notice-cell" style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700,
+                          background: g.allPaid ? 'rgba(76,175,80,0.12)' : 'rgba(231,76,60,0.12)',
+                          color:      g.allPaid ? '#4caf50'              : '#e74c3c' }}>
+                          {g.allPaid ? 'Đã thu' : 'Chưa thu'}
+                        </span>
+                      </td>
+                      <td className="notice-cell" style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        {!g.allPaid && (
+                          <button className="btn btn-teal" style={{ padding: '3px 10px', fontSize: '11px' }}
+                            onClick={() => handleMarkAdminGroupPaid(g)}>
+                            Đã thu
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
