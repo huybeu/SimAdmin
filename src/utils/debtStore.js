@@ -79,13 +79,29 @@ export async function setCreditLimit(uid, limitAmount) {
 }
 
 // ── Lấy danh sách users với thông tin công nợ (theo hierarchy) ─────────────
+// Admin: chỉ thấy con trực tiếp (parentId==uid). Tổng kho được gộp debt của tất cả đại lý cấp dưới.
+// Tong_kho: chỉ thấy đại lý do mình tạo.
 export async function fetchDebtUsers(uid, role) {
   if (!firebaseEnabled) return [];
   const col = collection(db, 'users');
+
   if (role === 'admin') {
-    const snap = await getDocs(col);
-    return snap.docs.map(d => d.data()).filter(u => u.role !== 'admin');
+    // Chỉ lấy con trực tiếp của admin
+    const snap = await getDocs(query(col, where('parentId', '==', uid)));
+    const children = snap.docs.map(d => d.data());
+
+    // Với mỗi tong_kho, tính aggregatedDebt = totalDebt riêng + tổng totalDebt của đại lý cấp dưới
+    return Promise.all(children.map(async (u) => {
+      if (u.role !== 'tong_kho') return u;
+      try {
+        const subSnap = await getDocs(query(col, where('parentId', '==', u.uid)));
+        const subDebt  = subSnap.docs.reduce((s, d) => s + (d.data().totalDebt || 0), 0);
+        const subCount = subSnap.size;
+        return { ...u, aggregatedDebt: (u.totalDebt || 0) + subDebt, subCount };
+      } catch { return u; }
+    }));
   }
+
   if (role === 'tong_kho') {
     const snap = await getDocs(query(col, where('parentId', '==', uid)));
     return snap.docs.map(d => d.data());
@@ -94,14 +110,31 @@ export async function fetchDebtUsers(uid, role) {
 }
 
 // ── Lấy lịch sử giao dịch công nợ ──────────────────────────────────────────
+// Admin: lấy toàn bộ giao dịch trong cây (trực tiếp + cháu qua tong_kho).
+// Tong_kho: giao dịch của mình + đại lý cấp dưới.
 export async function fetchDebtTransactions(uid, role) {
   if (!firebaseEnabled) return [];
   const col = collection(db, 'debt_transactions');
+
   if (role === 'admin') {
-    const snap = await getDocs(col);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // Tìm tong_kho con trực tiếp để lấy thêm giao dịch của cháu (dai_ly dưới tong_kho)
+    let tongKhoUids = [];
+    try {
+      const usersSnap = await getDocs(query(collection(db, 'users'), where('parentId', '==', uid)));
+      tongKhoUids = usersSnap.docs.map(d => d.data()).filter(u => u.role === 'tong_kho').map(u => u.uid);
+    } catch { /* tiếp tục với mảng rỗng */ }
+
+    // parentId == admin.uid: giao dịch của tất cả con trực tiếp
+    // parentId == mỗi tong_kho.uid: giao dịch của đại lý cháu
+    const parentIds = [uid, ...tongKhoUids];
+    const snaps = await Promise.all(parentIds.map(pid =>
+      getDocs(query(col, where('parentId', '==', pid)))
+    ));
+    const map = new Map();
+    snaps.forEach(s => s.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() })));
+    return [...map.values()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
+
   if (role === 'tong_kho') {
     const [own, children] = await Promise.all([
       getDocs(query(col, where('uid', '==', uid))),
@@ -111,6 +144,7 @@ export async function fetchDebtTransactions(uid, role) {
     [...own.docs, ...children.docs].forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
     return [...map.values()].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
+
   // dai_ly — chỉ xem của mình
   const snap = await getDocs(query(col, where('uid', '==', uid)));
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
